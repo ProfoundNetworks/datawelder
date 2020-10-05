@@ -12,24 +12,51 @@ If the answers to the above questions are "yes", then ``datawelder`` is for you!
 Example
 -------
 
+First, examine our toy dataset.
+It contains country names and currencies in two separate tables.
+
 ::
 
-    pip install datawelder
-    python -m datawelder.partition s3://bucket/data/foo.csv.gz s3://bucket/parts/foo 1000
-    python -m datawelder.partition s3://bucket/data/bar.csv.gz s3://bucket/parts/bar 1000
-    python -m datawelder.join s3://bucket/data/foo_bar.csv.gz s3://bucket/parts/foo s3://bucket/parts/bar --writer csv
+    $ head -n 5 sampledata/names.csv
+    iso3|name
+    AND|Principality of Andorra
+    ARE|United Arab Emirates
+    AFG|Islamic Republic of Afghanistan
+    ATG|Antigua and Barbuda
+    $ head -n 5 sampledata/currencies.csv
+    iso3|currency
+    AND|Euro
+    ARE|Dirham
+    AFG|Afghani
+    ATG|Dollar
+
+We can join these two dataframes as follows:
+
+::
+
+    $ pip install datawelder
+    $ python -m datawelder.partition sampledata/names.csv partitions/names 5
+    $ python -m datawelder.partition sampledata/currencies.csv partitions/currencies 5
+    $ python -m datawelder.join out.csv partitions/names partitions/currencies --writer csv
+    $ grep AND out.csv
+    AND|Principality of Andorra|Euro
     
 How does it work?
 -----------------
 
 First, ``datawelder`` `partitions <https://en.wikipedia.org/wiki/Partition_(database)>`_ each dataset using a partition key.
-In the above example, we split each dataset into 1000 partititions using the default key (whatever is the first column), but you can override that.
-Since the partitions now fit into memory, it is possible to join them one-by-one, and then concatenate the join results together to achieve the final joined dataset.
+We used 5 partitions because the datasets are tiny, but you can specify an arbitrary partition size when working with real data.
+
+In this case, it automatically identified the format of the file as CSV.
+You can give it a helping hand by specifying the format and relevant parameters (e.g. field separator, quoting, etc) manually.
+
+We did not specify a partition key to use in the above example, so ``datawelder`` picked a default for us (you can override this).
+In the above example, we split each dataset into 10 partititions using the default key (whatever is the first column), but you can override that.
 
 Features
 --------
 
 - Parallelization across multiple cores via subprocess/multiprocessing
-- Access to cloud storage e.g. S3 via `smart_open <https://github.com/RaRe-Technologies/smart_open>`_.
+- Access to cloud storage for reading and writing e.g. S3 via `smart_open <https://github.com/RaRe-Technologies/smart_open>`_.  You do not have to store anything locally.
 - Read/write various file formats (CSV, JSON, pickle) out of the box
 - Flexible API for dealing with file format edge cases
