@@ -58,6 +58,26 @@ def _sniff(path: str) -> str:
     assert False
 
 
+class AbstractReader:
+    def __init__(
+        self,
+        path: str,
+        field_names: Optional[List[str]] = None,
+        key_index: int = 0
+    ) -> None:
+        self._path = path
+
+    def __enter__(self):
+        self._fin = smart_open.open(self._path, 'r')
+        return self
+
+    def __exit__(self, *exc):
+        pass
+
+    def next(self) -> Iterator[List]:
+        raise NotImplementedError
+
+
 def _read_csv(
     source_path: str,
     key_index: int,
