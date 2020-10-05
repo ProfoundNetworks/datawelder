@@ -47,27 +47,48 @@ _TEXT_ENCODING = 'utf-8'
 
 
 def _sniff(path: str) -> str:
+    #
+    # FIXME: improve this
+    #
     if '.csv' in path:
         return 'csv'
+    elif '.json' in path:
+        return 'json'
 
     assert False
 
 
-def _read_csv(source_path: str, params: Optional[Dict[str, Any]] = None) -> Iterator[Tuple]:
+def _read_csv(
+    source_path: str,
+    key_index: int,
+    field_names: List[str],
+    params: Optional[Dict[str, Any]] = None,
+) -> Iterator[Tuple]:
     if params is None:
         params = {}
     with smart_open.open(source_path) as fin:
         reader = csv.reader(fin, **params)
+        if not field_names:
+            field_names.extend(next(reader))
+            _LOGGER.info('assuming that the key is %r', field_names[key_index])
         for record in reader:
             yield tuple(record)
 
 
-def _read_json(source_path: str, field_names: List[str]) -> Iterator[Tuple]:
+def _read_json(
+    source_path: str,
+    key_index: int,
+    field_names: List[str],
+) -> Iterator[Tuple]:
     with smart_open.open(source_path) as fin:
         for line in fin:
             record_dict = json.loads(line)
+            if not field_names:
+                field_names.extend(sorted(record_dict))
+                _LOGGER.info('assuming that the key is %r', field_names[key_index])
+
             #
-            # NB We're introducing null values here...
+            # NB We're potentially introducing null values here...
             #
             record_tuple = tuple([record_dict.get(f) for f in field_names])
             yield record_tuple
@@ -202,25 +223,17 @@ def partition(
     csv_params: Optional[Dict[str, Any]] = None,
     key_function: Callable[[str, int], int] = calculate_key,
 ) -> 'PartitionedFrame':
-    """Partition a data frame.
-
-    :param source_path:
-    :param destination_path: A directory-like path.  May be an S3 prefix.
-    :param num_partitions:
-    :param key_index:
-    :param key_name:
-    """
+    """Partition a data frame."""
     if source_format is None:
         source_format = _sniff(source_path)
 
+    if field_names is None:
+        field_names = []
+
     if source_format == 'csv':
-        reader = _read_csv(source_path, csv_params)
-        if field_names is None:
-            field_names = list(next(reader))
-            assert all(isinstance(fn, str) for fn in field_names)
+        reader = _read_csv(source_path, key_index, field_names, csv_params)
     elif source_format == 'json':
-        assert field_names
-        reader = _read_json(source_path, field_names)
+        reader = _read_json(source_path, key_index, field_names)
     else:
         assert False
 
@@ -252,11 +265,40 @@ def partition(
 
 
 def main():
-    import sys
-    source = sys.argv[1]
-    destination = sys.argv[2]
-    csv_params = {'delimiter': '|', 'quoting': csv.QUOTE_NONE, 'quotechar': ''}
-    partition(source, destination, 250, csv_params=csv_params)
+    import argparse
+
+    parser = argparse.ArgumentParser(description='Split dataframes into partitions')
+    parser.add_argument('source')
+    parser.add_argument('destination')
+    parser.add_argument('numpartitions', type=int)
+    parser.add_argument(
+        '--fieldnames',
+        nargs='+',
+        help=(
+            'The names of fields to load. If not specified, will attemp to '
+            'read from the first line of the source file.'
+        ),
+    )
+    parser.add_argument(
+        '--keyindex',
+        type=int,
+        default=0,
+        help='The index of the partition key in the `fieldnames` list',
+    )
+    parser.add_argument('--delimiter', default='|')
+    parser.add_argument('--quoting', type=int, default=csv.QUOTE_NONE)
+    parser.add_argument('--quotechar', default='')
+    parser.add_argument('--loglevel', default=logging.INFO)
+    args = parser.parse_args()
+
+    logging.basicConfig(level=args.loglevel)
+
+    csv_params = {
+        'delimiter': args.delimiter,
+        'quoting': args.quoting,
+        'quotechar': args.quotechar,
+    }
+    partition(args.source, args.destination, args.numpartitions, csv_params=csv_params)
 
 
 if __name__ == '__main__':

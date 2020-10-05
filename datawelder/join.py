@@ -113,6 +113,10 @@ def _join_partitions(
     left_partition = partitions[0]
     partitions = partitions[1:]
 
+    for i, part in enumerate(partitions, 1):
+        for record in part:
+            lookup[i][record[part.key_index]] = record
+
     with writer_class(output_path, partition_num) as writer:
         for left_record in left_partition:
             left_key = left_record[left_partition.key_index]
@@ -120,7 +124,12 @@ def _join_partitions(
 
             for i, right_partition in enumerate(partitions, 1):
                 try:
-                    right_record = lookup[i][left_key]
+                    #
+                    # Convert the tuple to a list here, as opposed to when
+                    # creating the lookup, because tuples are more compact.
+                    # We'll be throwing the list away shortly anyway.
+                    #
+                    right_record = list(lookup[i][left_key])
                 except KeyError:
                     right_record = [None for _ in right_partition.field_names]
 
@@ -184,15 +193,37 @@ def join(
 
 
 def main():
-    import sys
+    import argparse
     import datawelder.partition
 
-    destination = sys.argv[1]
-    dataframes = [datawelder.partition.PartitionedFrame(x) for x in sys.argv[2:]]
+    parser = argparse.ArgumentParser(description='Join partitioned dataframes together')
+    parser.add_argument('destination', help='Where to save the result of the join')
+    parser.add_argument('sources', nargs='+', help='Which partitioned dataframes (subdirectories) to join')
+    parser.add_argument('--writer', default='pickle', choices=('pickle', 'json', 'csv'))
+    parser.add_argument('--subprocesses', type=int)
+    args = parser.parse_args()
+
+    dataframes = [datawelder.partition.PartitionedFrame(x) for x in args.sources]
     columns = join_field_names(dataframes)
-    # writer_class = functools.partial(CsvWriter, write_header=True, delimiter='|', columns=columns)
-    writer_class = functools.partial(JsonWriter, field_names=columns)
-    join(dataframes, destination, writer_class=writer_class)
+
+    if args.writer == 'pickle':
+        writer_class = PickleWriter
+    elif args.writer == 'json':
+        writer_class = functools.partial(JsonWriter, field_names=columns)
+    elif args.writer == 'csv':
+        #
+        # TODO: support for CSV parameters?
+        #
+        writer_class = functools.partial(CsvWriter, write_header=True, delimiter='|', columns=columns)
+    else:
+        assert False
+
+    join(
+        dataframes,
+        args.destination,
+        writer_class=writer_class,
+        num_subprocesses=args.subprocesses,
+    )
 
 
 if __name__ == '__main__':
