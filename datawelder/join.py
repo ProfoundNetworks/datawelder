@@ -143,6 +143,12 @@ def main():
         nargs='*',
         help='Additional params to pass to the writer, in key=value format',
     )
+    parser.add_argument(
+        '--select',
+        type=str,
+        nargs='*',
+        help='Select a subset of output fields to keep',
+    )
     parser.add_argument('--subprocesses', type=int)
     args = parser.parse_args()
 
@@ -164,6 +170,7 @@ def main():
         writer_class,
         fieldnames=fieldnames,
         fmtparams=fmtparams,
+        select=args.select,
     )
     join(
         dataframes,

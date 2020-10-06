@@ -37,9 +37,41 @@ We can join these two dataframes as follows:
     $ pip install datawelder
     $ python -m datawelder.partition sampledata/names.csv partitions/names 5
     $ python -m datawelder.partition sampledata/currencies.csv partitions/currencies 5
-    $ python -m datawelder.join out.csv partitions/names partitions/currencies --writer csv
+    $ python -m datawelder.join out.csv partitions/names partitions/currencies --format csv
     $ grep AND out.csv
     AND|Principality of Andorra|Euro
+
+Tweaking
+--------
+
+You can specify the partition key explicitly:
+
+::
+
+    $ python -m datawelder.partition sampledata/names.csv partitions/names 5 --keyindex 0
+    $ python -m datawelder.partition sampledata/names.csv partitions/names 5 --keyname iso3
+
+You can specify any format parameters (e.g. CSV delimiter) explicitly:
+
+::
+
+    $ python -m datawelder.partition sampledata/names.csv partitions/names 5 --formatparams delimiter='|' quotechar=''
+
+Similarly, for output:
+
+::
+
+    $ python -m datawelder.join out.csv partitions/names partitions/currencies --format csv --fmtparams delimiter=,
+    $ grep AND out.csv
+    AND,Principality of Andorra,Euro
+
+You can also select a subset of fields to keep (similar to SQL SELECT):
+
+::
+
+    $ python -m datawelder.join out.csv partitions/names partitions/currencies --format csv --select name currency
+    $ grep -i andorra out.csv
+    Principality of Andorra,Euro
     
 How does it work?
 -----------------
