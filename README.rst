@@ -15,7 +15,7 @@ Example
 First, examine our toy dataset.
 It contains country names and currencies in two separate tables.
 
-::
+.. code:: bash
 
     $ head -n 5 sampledata/names.csv
     iso3,name
@@ -32,7 +32,7 @@ It contains country names and currencies in two separate tables.
 
 We can join these two dataframes as follows:
 
-::
+.. code:: bash
 
     $ python -m datawelder.partition sampledata/names.csv partitions/names 5
     $ python -m datawelder.partition sampledata/currencies.csv partitions/currencies 5
@@ -45,20 +45,20 @@ Tweaking
 
 You can specify the partition key explicitly:
 
-::
+.. code:: bash
 
     $ python -m datawelder.partition sampledata/names.csv partitions/names 5 --keyindex 0
     $ python -m datawelder.partition sampledata/names.csv partitions/names 5 --keyname iso3
 
 You can specify any format parameters (e.g. CSV delimiter) explicitly:
 
-::
+.. code:: bash
 
     $ python -m datawelder.partition sampledata/names.csv partitions/names 5 --fmtparams delimiter=',' lineterminator='\n'
 
 Similarly, for output:
 
-::
+.. code:: bash
 
     $ python -m datawelder.join out.csv partitions/names partitions/currencies --format csv --fmtparams delimiter=;
     $ grep AND out.csv
@@ -66,14 +66,14 @@ Similarly, for output:
 
 Other formats work transparently:
 
-::
+.. code:: bash
 
     $ python -m datawelder.partition sampledata/names.json partitions/names 5 --keyname iso3
 
 Once you partition your datasets, it doesn't matter what format they were originally in.
 You can merge them with any other partitioned dataset with ease:
 
-::
+.. code:: bash
 
     $ python -m datawelder.join out.json partitions/names partitions/currencies --format json
     $ head -n 5 out.json
@@ -85,7 +85,7 @@ You can merge them with any other partitioned dataset with ease:
 
 You can also select a subset of fields to keep (similar to SQL SELECT):
 
-::
+.. code:: bash
 
     $ python -m datawelder.join out.csv partitions/names partitions/currencies --format csv --select 0.name,1.currency
     $ grep -i andorra out.csv
@@ -93,7 +93,7 @@ You can also select a subset of fields to keep (similar to SQL SELECT):
 
 ``datawelder`` will automatically name the fields for you:
 
-::
+.. code:: bash
 
     $ head -n 5 out.csv
     0.name,1.currency
@@ -107,7 +107,7 @@ For example, ``1.currency`` means "the currency field from dataframe 1".
 
 You can also rename the selected fields as desired (again, similar to SQL SELECT):
 
-::
+.. code:: bash
 
     $ python -m datawelder.join out.csv partitions/names partitions/currencies --format csv --select '0.name as name, 1.currency as curr'
     $ head -n 5 out.csv
