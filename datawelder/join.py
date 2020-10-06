@@ -8,12 +8,9 @@ Example usage::
 
 """
 
-import csv
 import functools
-import json
 import multiprocessing
 import os.path as P
-import pickle
 import tempfile
 
 from typing import (
@@ -24,86 +21,18 @@ from typing import (
     TYPE_CHECKING,
 )
 
-import smart_open  # type: ignore
-
-from . import cat
+import datawelder.cat
+import datawelder.io
 
 if TYPE_CHECKING:
     from . import partition
-
-
-#
-# TODO: Consider using abc for actual abstract classes.
-#
-class AbstractWriter:
-    def __init__(self, path: str, partition_num: int):
-        self._path = path
-        self._partition_num = partition_num
-
-    def __enter__(self):
-        self._fout = smart_open.open(self._path, 'wb')
-        return self
-
-    def __exit__(self, *exc):
-        pass
-
-    def write(self, record: List[Any]) -> None:
-        raise NotImplementedError
-
-
-class PickleWriter(AbstractWriter):
-    def write(self, record):
-        pickle.dump(record, self._fout)
-
-
-class JsonWriter(AbstractWriter):
-    def __init__(self, path: str, partition_num: int, field_names: str):
-        super().__init__(path, partition_num)
-        self._field_names = field_names
-
-    def write(self, record):
-        assert len(self._field_names) == len(record)
-        record_dict = dict(zip(self._field_names, record))
-        self._fout.write(json.dumps(record_dict).encode('utf-8'))
-        self._fout.write(b'\n')
-
-
-class CsvWriter(AbstractWriter):
-    def __init__(
-        self,
-        path,
-        partition_num: int,
-        columns: List[Optional[str]] = None,
-        write_header: bool = False,
-        **kwargs,
-    ):
-        super().__init__(path, partition_num)
-        self._columns = columns
-        self._column_indices = [i for (i, colname) in enumerate(columns) if colname]
-        self._kwargs = kwargs
-        self._write_header = write_header
-
-    def __enter__(self):
-        self._fout = smart_open.open(self._path, 'wt')
-        self._writer = csv.writer(self._fout, **self._kwargs)
-
-        header = [colname for colname in self._columns if colname]
-        if self._write_header and self._partition_num == 0:
-            self._writer.writerow(header)
-
-        return self
-
-    def write(self, record):
-        assert len(record) == len(self._columns)
-        row = [record[i] for i in self._column_indices]
-        self._writer.writerow(row)
 
 
 def _join_partitions(
     partition_num: int,
     partitions: List['partition.Partition'],
     output_path: str,
-    writer_class: Any = PickleWriter,
+    writer_class: Any = 'datawelder.io.PickleWriter',
 ) -> None:
     #
     # Load all partitions into memory, except for the first one, because we
@@ -157,7 +86,7 @@ def join_field_names(frames: List['partition.PartitionedFrame']) -> List[str]:
 def join(
     frames: List['partition.PartitionedFrame'],
     destination: str,
-    writer_class: Any = PickleWriter,
+    writer_class: Any = 'datawelder.io.PickleWriter',
     num_subprocesses: Optional[int] = None,
 ) -> Any:
     #
@@ -189,7 +118,7 @@ def join(
         else:
             pool = multiprocessing.Pool(num_subprocesses)
             pool.starmap(_join_partitions, generate_work(temp_paths))
-        cat.cat(temp_paths, destination)
+        datawelder.cat.cat(temp_paths, destination)
 
 
 def main():
@@ -199,25 +128,43 @@ def main():
     parser = argparse.ArgumentParser(description='Join partitioned dataframes together')
     parser.add_argument('destination', help='Where to save the result of the join')
     parser.add_argument('sources', nargs='+', help='Which partitioned dataframes (subdirectories) to join')
-    parser.add_argument('--writer', default='pickle', choices=('pickle', 'json', 'csv'))
+    parser.add_argument(
+        '--format',
+        default=datawelder.io.PICKLE,
+        choices=(
+            datawelder.io.CSV,
+            datawelder.io.JSON,
+            datawelder.io.PICKLE,
+        ),
+    )
+    parser.add_argument(
+        '--fmtparams',
+        type=str,
+        nargs='*',
+        help='Additional params to pass to the writer, in key=value format',
+    )
     parser.add_argument('--subprocesses', type=int)
     args = parser.parse_args()
 
     dataframes = [datawelder.partition.PartitionedFrame(x) for x in args.sources]
-    columns = join_field_names(dataframes)
+    fieldnames = join_field_names(dataframes)
 
-    if args.writer == 'pickle':
-        writer_class = PickleWriter
-    elif args.writer == 'json':
-        writer_class = functools.partial(JsonWriter, field_names=columns)
-    elif args.writer == 'csv':
-        #
-        # TODO: support for CSV parameters?
-        #
-        writer_class = functools.partial(CsvWriter, write_header=True, delimiter='|', columns=columns)
+    fmtparams = datawelder.io.parse_fmtparams(args.fmtparams)
+
+    if args.format == datawelder.io.PICKLE:
+        writer_class = datawelder.io.PickleWriter
+    elif args.format == datawelder.io.JSON:
+        writer_class = datawelder.io.JsonWriter
+    elif args.format == datawelder.io.CSV:
+        writer_class = datawelder.io.CsvWriter
     else:
         assert False
 
+    writer_class = functools.partial(
+        writer_class,
+        fieldnames=fieldnames,
+        fmtparams=fmtparams,
+    )
     join(
         dataframes,
         args.destination,

@@ -20,8 +20,6 @@ Each record will be a tuple.  You can convert it to a more helpful format::
 """
 
 import contextlib
-import csv
-import json
 import logging
 import os
 import os.path as P
@@ -32,86 +30,18 @@ import zlib
 from typing import (
     Any,
     Callable,
-    Dict,
     Iterator,
     List,
     Optional,
-    Tuple,
+    Union,
 )
 
 import smart_open  # type: ignore
 import yaml
 
+import datawelder.io
+
 _LOGGER = logging.getLogger(__name__)
-_TEXT_ENCODING = 'utf-8'
-
-
-def _sniff(path: str) -> str:
-    #
-    # FIXME: improve this
-    #
-    if '.csv' in path:
-        return 'csv'
-    elif '.json' in path:
-        return 'json'
-
-    assert False
-
-
-class AbstractReader:
-    def __init__(
-        self,
-        path: str,
-        field_names: Optional[List[str]] = None,
-        key_index: int = 0
-    ) -> None:
-        self._path = path
-
-    def __enter__(self):
-        self._fin = smart_open.open(self._path, 'r')
-        return self
-
-    def __exit__(self, *exc):
-        pass
-
-    def next(self) -> Iterator[List]:
-        raise NotImplementedError
-
-
-def _read_csv(
-    source_path: str,
-    key_index: int,
-    field_names: List[str],
-    params: Optional[Dict[str, Any]] = None,
-) -> Iterator[Tuple]:
-    if params is None:
-        params = {}
-    with smart_open.open(source_path) as fin:
-        reader = csv.reader(fin, **params)
-        if not field_names:
-            field_names.extend(next(reader))
-            _LOGGER.info('assuming that the key is %r', field_names[key_index])
-        for record in reader:
-            yield tuple(record)
-
-
-def _read_json(
-    source_path: str,
-    key_index: int,
-    field_names: List[str],
-) -> Iterator[Tuple]:
-    with smart_open.open(source_path) as fin:
-        for line in fin:
-            record_dict = json.loads(line)
-            if not field_names:
-                field_names.extend(sorted(record_dict))
-                _LOGGER.info('assuming that the key is %r', field_names[key_index])
-
-            #
-            # NB We're potentially introducing null values here...
-            #
-            record_tuple = tuple([record_dict.get(f) for f in field_names])
-            yield record_tuple
 
 
 @contextlib.contextmanager
@@ -183,7 +113,7 @@ def calculate_key(key: str, num_shards: int) -> int:
     # adler32 is documented as faster than crc32, but I haven't seen any
     # difference between the two in my benchmarks.
     #
-    return zlib.adler32(key.encode(_TEXT_ENCODING)) % num_shards
+    return zlib.adler32(key.encode(datawelder.io.ENCODING)) % num_shards
 
 
 class PartitionedFrame:
@@ -234,28 +164,14 @@ class Partition:
 
 
 def partition(
-    source_path: str,
+    reader: 'datawelder.io.AbstractReader',
     destination_path: str,
     num_partitions: int,
     field_names: Optional[List[str]] = None,
     key_index: int = 0,
-    source_format: Optional[str] = None,
-    csv_params: Optional[Dict[str, Any]] = None,
     key_function: Callable[[str, int], int] = calculate_key,
 ) -> 'PartitionedFrame':
     """Partition a data frame."""
-    if source_format is None:
-        source_format = _sniff(source_path)
-
-    if field_names is None:
-        field_names = []
-
-    if source_format == 'csv':
-        reader = _read_csv(source_path, key_index, field_names, csv_params)
-    elif source_format == 'json':
-        reader = _read_json(source_path, key_index, field_names)
-    else:
-        assert False
 
     if not destination_path.startswith('s3://'):
         os.makedirs(destination_path, exist_ok=True)
@@ -270,9 +186,9 @@ def partition(
             pickle.dump(record, partitions[partition_index])
 
     config = {
-        'field_names': field_names,
+        'field_names': reader.field_names,
         'key_index': key_index,
-        'source_path': source_path,
+        'source_path': reader.path,
         'num_partitions': num_partitions,
         'partition_format': partition_format,
         'config_format': 1,
@@ -302,23 +218,58 @@ def main():
     parser.add_argument(
         '--keyindex',
         type=int,
-        default=0,
         help='The index of the partition key in the `fieldnames` list',
     )
-    parser.add_argument('--delimiter', default='|')
-    parser.add_argument('--quoting', type=int, default=csv.QUOTE_NONE)
-    parser.add_argument('--quotechar', default='')
+    parser.add_argument(
+        '--keyname',
+        type=str,
+        help='The name of the partition key',
+    )
+    parser.add_argument(
+        '--format',
+        type=str,
+        default='auto',
+        choices=('auto', datawelder.io.CSV, datawelder.io.JSON),
+        help='The format of the source file',
+    )
+    parser.add_argument(
+        '--fmtparams',
+        type=str,
+        nargs='*',
+        help='Additional params to pass to the reader, in key=value format',
+    )
     parser.add_argument('--loglevel', default=logging.INFO)
     args = parser.parse_args()
 
+    if args.keyindex and args.keyname:
+        parser.error('--keyindex and --keyname are mutually exclusive')
+
     logging.basicConfig(level=args.loglevel)
 
-    csv_params = {
-        'delimiter': args.delimiter,
-        'quoting': args.quoting,
-        'quotechar': args.quotechar,
-    }
-    partition(args.source, args.destination, args.numpartitions, csv_params=csv_params)
+    source_format = datawelder.io.CSV
+    if args.format in (None, 'auto'):
+        source_format = datawelder.io.sniff_format(args.source)
+
+    if source_format == datawelder.io.CSV:
+        cls = datawelder.io.CsvReader
+    elif source_format == datawelder.io.JSON:
+        cls = datawelder.io.JsonReader
+    else:
+        assert False
+
+    fmtparams = datawelder.io.parse_fmtparams(args.fmtparams)
+
+    key: Union[int, str, None] = None
+    if args.keyindex:
+        key = args.keyindex
+    elif args.keyname:
+        key = args.keyname
+    else:
+        key = 0
+    assert key is not None
+
+    with cls(args.source, key, args.fieldnames, fmtparams) as reader:
+        partition(reader, args.destination, args.numpartitions)
 
 
 if __name__ == '__main__':
