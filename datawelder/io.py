@@ -148,12 +148,13 @@ class AbstractWriter:
         self._path = path
         self._partition_num = partition_num
         self._fieldnames = fieldnames
-        self._select = set(select) if select else set(fieldnames)
+        self._select = select
 
         if fmtparams:
             self._fmtparams = fmtparams
         else:
             self._fmtparams = {}
+
 
     def __enter__(self):
         self._fout = smart_open.open(self._path, 'wb')
@@ -175,41 +176,46 @@ class JsonWriter(AbstractWriter):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self._indices = [
-            (key, i)
-            for i, key in enumerate(self._fieldnames)
-            if key in self._select
-        ]
+        if self._select:
+            self._mapping = [
+                (i, self._select[key])
+                for i, key in enumerate(self._fieldnames)
+                if key in self._select
+            ]
+        else:
+            self._mapping = [(i, name) for (i, name) in enumerate(self._fieldnames)]
+
+        assert self._mapping, 'nothing to output'
 
     def write(self, record):
         assert len(self._fieldnames) == len(record)
-
-        record_dict = {key: record[i] for (key, i) in self._indices}
-        self._fout.write(json.dumps(record_dict).encode('utf-8'))
+        record_dict = {
+            fieldname: record[fieldindex]
+            for fieldindex, fieldname in self._mapping
+        }
+        self._fout.write(json.dumps(record_dict).encode(ENCODING))
         self._fout.write(b'\n')
 
 
 class CsvWriter(AbstractWriter):
-    def __init__(
-        self,
-        path,
-        partition_num: int,
-        fieldnames: Optional[List[str]] = None,
-        select: Optional[List[str]] = None,
-        fmtparams: Optional[Dict[str, str]] = None,
-    ):
-        super().__init__(path, partition_num, fieldnames, select, fmtparams)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
-        self._indices = [
-            i
-            for (i, colname) in enumerate(self._fieldnames)
-            if colname in self._select
-        ]
-        self._header = [
-            colname
-            for (i, colname) in enumerate(self._fieldnames)
-            if colname in self._select
-        ]
+        if self._select:
+            self._header = [
+                self._select[colname]
+                for (i, colname) in enumerate(self._fieldnames)
+                if colname in self._select
+            ]
+            self._indices = [
+                i
+                for (i, colname) in enumerate(self._fieldnames)
+                if colname in self._select
+            ]
+        else:
+            self._header = list(self._fieldnames)
+            self._indices = [i for (i, _) in enumerate(self._fieldnames)]
+
         self._write_header = self._fmtparams.pop('write_header', 'true').lower() == 'true'
 
     def __enter__(self):

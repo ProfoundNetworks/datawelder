@@ -9,6 +9,7 @@ Example usage::
 """
 
 import functools
+import logging
 import multiprocessing
 import os.path as P
 import tempfile
@@ -16,8 +17,10 @@ import tempfile
 from typing import (
     Any,
     Dict,
+    Iterator,
     List,
     Optional,
+    Tuple,
     TYPE_CHECKING,
 )
 
@@ -26,6 +29,8 @@ import datawelder.io
 
 if TYPE_CHECKING:
     from . import partition
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def _join_partitions(
@@ -78,7 +83,8 @@ def join_field_names(frames: List['partition.PartitionedFrame']) -> List[str]:
         field_frames = list(frame.config['field_names'])
         if i != 0:
             field_frames.pop(frame.config['key_index'])
-        fields.extend(field_frames)
+
+        fields.extend(['%d.%s' % (i, f) for f in field_frames])
 
     return fields
 
@@ -121,6 +127,18 @@ def join(
         datawelder.cat.cat(temp_paths, destination)
 
 
+def _parse_select(query: str) -> Iterator[Tuple[str, str]]:
+    for clause in query.split(','):
+        words = clause.strip().split(' ')
+        if len(words) == 3 and words[1].lower() == 'as':
+            yield words[0], words[2]
+        elif len(words) == 1:
+            yield words[0], words[0]
+        else:
+            raise ValueError('bad SELECT query: %r' % query)
+
+
+
 def main():
     import argparse
     import datawelder.partition
@@ -146,14 +164,20 @@ def main():
     parser.add_argument(
         '--select',
         type=str,
-        nargs='*',
         help='Select a subset of output fields to keep',
     )
     parser.add_argument('--subprocesses', type=int)
+    parser.add_argument('--loglevel', default=logging.INFO)
     args = parser.parse_args()
+
+    logging.basicConfig(level=args.loglevel)
 
     dataframes = [datawelder.partition.PartitionedFrame(x) for x in args.sources]
     fieldnames = join_field_names(dataframes)
+
+    assert set(fieldnames) != len(fieldnames)
+
+    _LOGGER.info('fieldnames: %r', fieldnames)
 
     fmtparams = datawelder.io.parse_fmtparams(args.fmtparams)
 
@@ -166,11 +190,18 @@ def main():
     else:
         assert False
 
+    select = None
+    if args.select:
+        select = dict(_parse_select(args.select))
+        for field in select:
+            if field not in fieldnames:
+                parser.error('expected %r to be one of %r' % (field, fieldnames))
+
     writer_class = functools.partial(
         writer_class,
         fieldnames=fieldnames,
+        select=select,
         fmtparams=fmtparams,
-        select=args.select,
     )
     join(
         dataframes,

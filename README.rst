@@ -69,9 +69,34 @@ You can also select a subset of fields to keep (similar to SQL SELECT):
 
 ::
 
-    $ python -m datawelder.join out.csv partitions/names partitions/currencies --format csv --select name currency
+    $ python -m datawelder.join out.csv partitions/names partitions/currencies --format csv --select 0.name,1.currency
     $ grep -i andorra out.csv
     Principality of Andorra,Euro
+
+``datawelder`` will automatically name the fields for you:
+
+::
+    $ head -n 5 out.csv
+    0.iso3,0.name,1.currency
+    AGO,Republic of Angola,Kwanza
+    AUS,Commonwealth of Australia,Dollar
+    BGR,Republic of Bulgaria,Lev
+    BLM,Saint Barthelemy,Euro
+
+The name of each column is prefixed by the number of the dataframe it came from.
+For example, ``1.currency`` means "the currency field from dataframe 1".
+
+You can also rename the selected fields as desired (again, similar to SQL SELECT):
+
+::
+
+    $ python -m datawelder.join out.csv partitions/names partitions/currencies --format csv --select '0.name as name, 1.currency as curr'
+    $ head out.csv
+    name,curr
+    Republic of Angola,Kwanza
+    Commonwealth of Australia,Dollar
+    Republic of Bulgaria,Lev
+    Saint Barthelemy,Euro
     
 How does it work?
 -----------------
