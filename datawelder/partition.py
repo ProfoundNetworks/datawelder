@@ -37,6 +37,7 @@ from typing import (
 )
 
 import smart_open  # type: ignore
+import smart_open.s3  # type: ignore
 import yaml
 
 import datawelder.io
@@ -80,6 +81,17 @@ def open_partitions(
     :param mode: The mode in which the partitions must be opened.
     """
     _LOGGER.info("opening partitions: %r %r", path_format, mode)
+
+    #
+    # When writing to S3, smart_open buffers parts in memory until the minimum
+    # part size is reached, and only then performs the upload.  If we're
+    # writing to a large number of partitions simultaneously, the memory usage
+    # can become very high.  Reduce the limit to the minimum allowable to
+    # keep memory usage down.
+    #
+    tparams = {}
+    if path_format.startswith('s3://'):
+        tparams['min_part_size'] = smart_open.s3.MIN_MIN_PART_SIZE
     partition_paths = [path_format % i for i in range(num_partitions)]
 
     #
@@ -87,7 +99,10 @@ def open_partitions(
     # partitions, to be safe.  This appears to only be necessary on MacOS.
     #
     with _update_soft_limit(num_partitions * 2):
-        gzip_streams = [smart_open.open(path, mode=mode) for path in partition_paths]
+        gzip_streams = [
+            smart_open.open(path, mode=mode, transport_params=tparams)
+            for path in partition_paths
+        ]
         for path, stream in zip(partition_paths, gzip_streams):
             stream.path_to_file = path  # type: ignore
 
