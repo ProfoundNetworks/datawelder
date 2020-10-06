@@ -18,28 +18,27 @@ It contains country names and currencies in two separate tables.
 ::
 
     $ head -n 5 sampledata/names.csv
-    iso3|name
-    AND|Principality of Andorra
-    ARE|United Arab Emirates
-    AFG|Islamic Republic of Afghanistan
-    ATG|Antigua and Barbuda
+    iso3,name
+    AND,Principality of Andorra
+    ARE,United Arab Emirates
+    AFG,Islamic Republic of Afghanistan
+    ATG,Antigua and Barbuda
     $ head -n 5 sampledata/currencies.csv
-    iso3|currency
-    AND|Euro
-    ARE|Dirham
-    AFG|Afghani
-    ATG|Dollar
+    iso3,currency
+    AND,Euro
+    ARE,Dirham
+    AFG,Afghani
+    ATG,Dollar
 
 We can join these two dataframes as follows:
 
 ::
 
-    $ pip install datawelder
     $ python -m datawelder.partition sampledata/names.csv partitions/names 5
     $ python -m datawelder.partition sampledata/currencies.csv partitions/currencies 5
     $ python -m datawelder.join out.csv partitions/names partitions/currencies --format csv
     $ grep AND out.csv
-    AND|Principality of Andorra|Euro
+    AND,Principality of Andorra,Euro
 
 Tweaking
 --------
@@ -55,15 +54,34 @@ You can specify any format parameters (e.g. CSV delimiter) explicitly:
 
 ::
 
-    $ python -m datawelder.partition sampledata/names.csv partitions/names 5 --formatparams delimiter='|' quotechar=''
+    $ python -m datawelder.partition sampledata/names.csv partitions/names 5 --fmtparams delimiter=',' lineterminator='\n'
 
 Similarly, for output:
 
 ::
 
-    $ python -m datawelder.join out.csv partitions/names partitions/currencies --format csv --fmtparams delimiter=,
+    $ python -m datawelder.join out.csv partitions/names partitions/currencies --format csv --fmtparams delimiter=;
     $ grep AND out.csv
-    AND,Principality of Andorra,Euro
+    AND;Principality of Andorra;Euro
+
+Other formats work transparently:
+
+::
+
+    $ python -m datawelder.partition sampledata/names.json partitions/names 5 --keyname iso3
+
+Once you partition your datasets, it doesn't matter what format they were originally in.
+You can merge them with any other partitioned dataset with ease:
+
+::
+
+    $ python -m datawelder.join out.json partitions/names partitions/currencies --format json
+    $ head -n 5 out.json
+    {"0.iso3": "AGO", "0.name": "Republic of Angola", "1.currency": "Kwanza"}
+    {"0.iso3": "AUS", "0.name": "Commonwealth of Australia", "1.currency": "Dollar"}
+    {"0.iso3": "BGR", "0.name": "Republic of Bulgaria", "1.currency": "Lev"}
+    {"0.iso3": "BLM", "0.name": "Saint Barthelemy", "1.currency": "Euro"}
+    {"0.iso3": "BRN", "0.name": "Brunei Darussalam", "1.currency": "Dollar"}
 
 You can also select a subset of fields to keep (similar to SQL SELECT):
 
@@ -76,12 +94,13 @@ You can also select a subset of fields to keep (similar to SQL SELECT):
 ``datawelder`` will automatically name the fields for you:
 
 ::
+
     $ head -n 5 out.csv
-    0.iso3,0.name,1.currency
-    AGO,Republic of Angola,Kwanza
-    AUS,Commonwealth of Australia,Dollar
-    BGR,Republic of Bulgaria,Lev
-    BLM,Saint Barthelemy,Euro
+    0.name,1.currency
+    Republic of Angola,Kwanza
+    Commonwealth of Australia,Dollar
+    Republic of Bulgaria,Lev
+    Saint Barthelemy,Euro
 
 The name of each column is prefixed by the number of the dataframe it came from.
 For example, ``1.currency`` means "the currency field from dataframe 1".
@@ -91,7 +110,7 @@ You can also rename the selected fields as desired (again, similar to SQL SELECT
 ::
 
     $ python -m datawelder.join out.csv partitions/names partitions/currencies --format csv --select '0.name as name, 1.currency as curr'
-    $ head out.csv
+    $ head -n 5 out.csv
     name,curr
     Republic of Angola,Kwanza
     Commonwealth of Australia,Dollar

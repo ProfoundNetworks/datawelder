@@ -91,13 +91,13 @@ class JsonReader(AbstractReader):
             if isinstance(self._key, str):
                 self.key_index = self.field_names.index(self._key)
 
-        _LOGGER.info('partition key: %r', self.field_names[self.key_index])
+            _LOGGER.info('partition key: %r', self.field_names[self.key_index])
 
         #
         # NB We're potentially introducing null values here...
         #
         record_tuple = tuple([record_dict.get(f) for f in self.field_names])
-        yield record_tuple
+        return record_tuple
 
 
 def parse_fmtparams(params: List[str]) -> Dict[str, str]:
@@ -154,7 +154,6 @@ class AbstractWriter:
             self._fmtparams = fmtparams
         else:
             self._fmtparams = {}
-
 
     def __enter__(self):
         self._fout = smart_open.open(self._path, 'wb')
@@ -229,6 +228,8 @@ class CsvWriter(AbstractWriter):
         return self
 
     def write(self, record):
+        if len(record) != len(self._fieldnames):
+            breakpoint()
         assert len(record) == len(self._fieldnames)
         row = [record[i] for i in self._indices]
         self._writer.writerow(row)
