@@ -33,7 +33,7 @@ setuptools.setup(
     keywords='datawelder join dataframes',
     license='MIT',
     platforms='any',
-    install_requires=['smart_open'],
+    install_requires=['smart_open', 'pyyaml'],
     python_requires=">=3.6.*",
     classifiers=[
         'Development Status :: 3 - Alpha',
