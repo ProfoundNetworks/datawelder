@@ -1,3 +1,4 @@
+"""Implements functions for reading and writing from/to files."""
 import csv
 import json
 import logging
@@ -139,16 +140,23 @@ class AbstractWriter:
         self,
         path: str,
         partition_num: int,
-        fieldnames: Optional[List[str]] = None,
-        select: Optional[List[str]] = None,
+        field_indices: List[int],
+        field_names: List[str],
         fmtparams: Optional[Dict[str, str]] = None,
     ) -> None:
-        assert fieldnames
+        """
+        :param path: Where to write to.
+        :param partition_num: The number of the partition being written.
+        :param field_indices: What fields to pick from the record when writing.
+        :param field_names: How to name the picked fields.
+        :param fmtparams: Options for the CSV writer.
+        """
+        assert len(field_indices) == len(field_names)
 
         self._path = path
         self._partition_num = partition_num
-        self._fieldnames = fieldnames
-        self._select = select
+        self._field_indices = field_indices
+        self._field_names = field_names
 
         if fmtparams:
             self._fmtparams = fmtparams
@@ -167,27 +175,22 @@ class AbstractWriter:
 
 
 class PickleWriter(AbstractWriter):
+    """Simply dumps the record as an unnamed tuple (list) to pickle.
+
+    Ignores most of the initializer parameters.
+    """
     def write(self, record):
         pickle.dump(record, self._fout)
 
 
 class JsonWriter(AbstractWriter):
+    """Writes records as JSON, one record per line."""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
-        if self._select:
-            self._mapping = [
-                (i, self._select[key])
-                for i, key in enumerate(self._fieldnames)
-                if key in self._select
-            ]
-        else:
-            self._mapping = [(i, name) for (i, name) in enumerate(self._fieldnames)]
-
+        self._mapping = list(zip(self._field_indices, self._field_names))
         assert self._mapping, 'nothing to output'
 
     def write(self, record):
-        assert len(self._fieldnames) == len(record)
         record_dict = {
             fieldname: record[fieldindex]
             for fieldindex, fieldname in self._mapping
@@ -197,24 +200,9 @@ class JsonWriter(AbstractWriter):
 
 
 class CsvWriter(AbstractWriter):
+    """Writes record as CSV."""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
-        if self._select:
-            self._header = [
-                self._select[colname]
-                for (i, colname) in enumerate(self._fieldnames)
-                if colname in self._select
-            ]
-            self._indices = [
-                i
-                for (i, colname) in enumerate(self._fieldnames)
-                if colname in self._select
-            ]
-        else:
-            self._header = list(self._fieldnames)
-            self._indices = [i for (i, _) in enumerate(self._fieldnames)]
-
         self._write_header = self._fmtparams.pop('write_header', 'true').lower() == 'true'
 
     def __enter__(self):
@@ -223,13 +211,10 @@ class CsvWriter(AbstractWriter):
         self._writer = csv.writer(self._fout, **fmtparams)
 
         if self._write_header and self._partition_num == 0:
-            self._writer.writerow(self._header)
+            self._writer.writerow(self._field_names)
 
         return self
 
     def write(self, record):
-        if len(record) != len(self._fieldnames):
-            breakpoint()
-        assert len(record) == len(self._fieldnames)
-        row = [record[i] for i in self._indices]
+        row = [record[i] for i in self._field_indices]
         self._writer.writerow(row)

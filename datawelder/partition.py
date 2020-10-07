@@ -140,6 +140,8 @@ class PartitionedFrame:
 
         assert self.config['config_format'] == 1
 
+        self.selected_fields = self.field_names
+
     def __len__(self):
         return self.config['num_partitions']
 
@@ -148,18 +150,63 @@ class PartitionedFrame:
             raise ValueError('key must be an integer indicating the number of the partition')
 
         partition_number = int(key)
-        if partition_number > self.config['num_partitions']:
+        if partition_number > len(self):
             raise ValueError('key must be less than %d' % self.config['num_partitions'])
 
+        names = list(self.selected_fields)
+        if self.key_name not in names:
+            names.insert(0, self.key_name)
+        indices = [self.field_names.index(f) for f in names]
+        keyindex = names.index(self.key_name)
+
         partition_path = P.join(self.path, self.config['partition_format'] % partition_number)
-        return Partition(partition_path, self.config['field_names'], self.config['key_index'])
+        return Partition(partition_path, indices, names, keyindex)
+
+    def select(self, field_names: List[str]) -> None:
+        for f in field_names:
+            if f not in self.field_names:
+                raise ValueError('expected %r to be one of %r' % (f, self.field_names))
+
+        self.selected_fields = field_names
+
+    @property
+    def field_names(self):
+        return self.config['field_names']
+
+    @property
+    def key_index(self):
+        return self.config['key_index']
+
+    @property
+    def key_name(self):
+        return self.field_names[self.key_index]
 
 
 class Partition:
-    def __init__(self, path: str, field_names: List[str], key_index: int) -> None:
+    def __init__(
+        self,
+        path: str,
+        field_indices: List[int],
+        field_names: List[str],
+        key_index: int,
+    ) -> None:
+        """Initialize a new partition.
+
+        The partition stores records in a pickle file, where a record is
+        an unnamed tuple.
+
+        :param path: The path to the pickle file.
+        :param field_indices: The indices of the fields to extract from the tuple.
+        :param field_names: The names of the extracted fields.
+        :param key_index: The index of the key.
+        """
+        assert len(field_names) == len(field_indices)
+
         self.path = path
+        self.field_indices = field_indices
         self.field_names = field_names
         self.key_index = key_index
+
         self._fin = None
 
     def __iter__(self):
@@ -173,9 +220,11 @@ class Partition:
             self._fin = smart_open.open(self.path, 'rb')
 
         try:
-            return pickle.load(self._fin)
+            record = pickle.load(self._fin)
         except EOFError:
             raise StopIteration
+        else:
+            return [record[i] for i in self.field_indices]
 
 
 def partition(

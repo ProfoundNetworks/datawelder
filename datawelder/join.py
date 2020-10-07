@@ -36,6 +36,8 @@ _LOGGER = logging.getLogger(__name__)
 def _join_partitions(
     partition_num: int,
     partitions: List['partition.Partition'],
+    selected_fields: List[str],
+    aliases: List[str],
     output_path: str,
     writer_class: Any = 'datawelder.io.PickleWriter',
 ) -> None:
@@ -46,12 +48,15 @@ def _join_partitions(
     lookup: List[Dict] = [dict() for _ in partitions]
     left_partition = partitions[0]
     partitions = partitions[1:]
+    field_names = ['0.%s' % f for f in left_partition.field_names]
 
     for i, part in enumerate(partitions, 1):
+        field_names.extend(['%d.%s' % (i, n) for n in part.field_names])
         for record in part:
             lookup[i][record[part.key_index]] = record
 
-    with writer_class(output_path, partition_num) as writer:
+    field_indices = [field_names.index(f) for f in selected_fields]
+    with writer_class(output_path, partition_num, field_indices, aliases) as writer:
         for left_record in left_partition:
             left_key = left_record[left_partition.key_index]
             joined_record = list(left_record)
@@ -66,8 +71,6 @@ def _join_partitions(
                     right_record = list(lookup[i][left_key])
                 except KeyError:
                     right_record = [None for _ in right_partition.field_names]
-
-                right_record.pop(right_partition.key_index)
                 joined_record.extend(right_record)
 
             writer.write(joined_record)
@@ -80,10 +83,7 @@ def join_field_names(frames: List['partition.PartitionedFrame']) -> List[str]:
 
     fields = []
     for i, frame in enumerate(frames):
-        field_frames = list(frame.config['field_names'])
-        if i != 0:
-            field_frames.pop(frame.config['key_index'])
-
+        field_frames = list(frame.selected_fields)
         fields.extend(['%d.%s' % (i, f) for f in field_frames])
 
     return fields
@@ -92,9 +92,13 @@ def join_field_names(frames: List['partition.PartitionedFrame']) -> List[str]:
 def join(
     frames: List['partition.PartitionedFrame'],
     destination: str,
+    selected_fields: List[str],
+    aliases: List[str],
     writer_class: Any = 'datawelder.io.PickleWriter',
     num_subprocesses: Optional[int] = None,
 ) -> Any:
+    assert len(selected_fields) == len(aliases)
+
     #
     # NB. The following fails when writer_class is a partial
     #
@@ -113,7 +117,14 @@ def join(
     def generate_work(temp_paths):
         assert len(temp_paths) == num_partitions
         for partition_num, temp_path in enumerate(temp_paths):
-            yield partition_num, [f[partition_num] for f in frames], temp_path, writer_class
+            yield (
+                partition_num,
+                [f[partition_num] for f in frames],
+                selected_fields,
+                aliases,
+                temp_path,
+                writer_class,
+            )
 
     with tempfile.TemporaryDirectory(prefix='datawelder-') as temp_dir:
         temp_paths = [P.join(temp_dir, str(i)) for i in range(num_partitions)]
@@ -127,16 +138,46 @@ def join(
         datawelder.cat.cat(temp_paths, destination)
 
 
-def _parse_select(query: str) -> Iterator[Tuple[str, str]]:
+def _parse_select(query: str) -> Iterator[Tuple[int, str, str, str]]:
     for clause in query.split(','):
         words = clause.strip().split(' ')
         if len(words) == 3 and words[1].lower() == 'as':
-            yield words[0], words[2]
+            prefix, suffix = words[0].split('.', 1)
+            yield int(prefix), suffix, words[0], words[2]
         elif len(words) == 1:
-            yield words[0], words[0]
+            prefix, suffix = words[0].split('.', 1)
+            yield int(prefix), suffix, words[0], words[0]
         else:
             raise ValueError('bad SELECT query: %r' % query)
 
+
+def _select(
+    dataframes: List['partition.PartitionedFrame'],
+    query: str
+) -> Tuple[List[str], List[str]]:
+    parsed_query = list(_parse_select(query))
+    _, _, selected_names, aliases = zip(*parsed_query)
+
+    field_names = join_field_names(dataframes)
+    for field in selected_names:
+        if field not in field_names:
+            raise ValueError('expected %r to be one of %r' % (field, field_names))
+
+    if len(set(aliases)) != len(aliases):
+        raise ValueError('field aliases are not unique')
+
+    for i, df in enumerate(dataframes):
+        fields_to_keep = [
+            fieldname
+            for (datasetidx, fieldname, prefixed_fieldname, alias) in parsed_query
+            if datasetidx == i
+        ]
+        if not fields_to_keep:
+            raise ValueError('not keeping any fields from dataframe %d' % i)
+
+        df.select(fields_to_keep)
+
+    return list(selected_names), list(aliases)
 
 
 def main():
@@ -173,13 +214,12 @@ def main():
     logging.basicConfig(level=args.loglevel)
 
     dataframes = [datawelder.partition.PartitionedFrame(x) for x in args.sources]
-    fieldnames = join_field_names(dataframes)
 
-    assert set(fieldnames) != len(fieldnames)
-
-    _LOGGER.info('fieldnames: %r', fieldnames)
-
-    fmtparams = datawelder.io.parse_fmtparams(args.fmtparams)
+    if args.select:
+        selected_names, aliases = _select(dataframes, args.select)
+    else:
+        selected_names = join_field_names(dataframes)
+        aliases = selected_names
 
     if args.format == datawelder.io.PICKLE:
         writer_class = datawelder.io.PickleWriter
@@ -190,22 +230,14 @@ def main():
     else:
         assert False
 
-    select = None
-    if args.select:
-        select = dict(_parse_select(args.select))
-        for field in select:
-            if field not in fieldnames:
-                parser.error('expected %r to be one of %r' % (field, fieldnames))
+    fmtparams = datawelder.io.parse_fmtparams(args.fmtparams)
+    writer_class = functools.partial(writer_class, fmtparams=fmtparams)
 
-    writer_class = functools.partial(
-        writer_class,
-        fieldnames=fieldnames,
-        select=select,
-        fmtparams=fmtparams,
-    )
     join(
         dataframes,
         args.destination,
+        selected_names,
+        aliases,
         writer_class=writer_class,
         num_subprocesses=args.subprocesses,
     )
