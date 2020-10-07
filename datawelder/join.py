@@ -36,9 +36,9 @@ _LOGGER = logging.getLogger(__name__)
 def _join_partitions(
     partition_num: int,
     partitions: List['partition.Partition'],
-    selected_fields: List[str],
-    aliases: List[str],
     output_path: str,
+    selected_fields: Optional[List[str]] = None,
+    aliases: Optional[List[str]] = None,
     writer_class: Any = 'datawelder.io.PickleWriter',
 ) -> None:
     #
@@ -54,6 +54,14 @@ def _join_partitions(
         field_names.extend(['%d.%s' % (i, n) for n in part.field_names])
         for record in part:
             lookup[i][record[part.key_index]] = record
+
+    #
+    # Do not output the join key multiple times, because it is redundant.
+    #
+    if selected_fields is None:
+        selected_fields = aliases = list(field_names)
+        for i, part in enumerate(partitions, 1):
+            selected_fields.remove('%d.%s' % (i, part.field_names[part.key_index]))
 
     field_indices = [field_names.index(f) for f in selected_fields]
     with writer_class(output_path, partition_num, field_indices, aliases) as writer:
@@ -92,13 +100,11 @@ def join_field_names(frames: List['partition.PartitionedFrame']) -> List[str]:
 def join(
     frames: List['partition.PartitionedFrame'],
     destination: str,
-    selected_fields: List[str],
-    aliases: List[str],
+    selected_fields: Optional[List[str]] = None,
+    aliases: Optional[List[str]] = None,
     writer_class: Any = 'datawelder.io.PickleWriter',
-    num_subprocesses: Optional[int] = None,
+    subs: Optional[int] = None,
 ) -> Any:
-    assert len(selected_fields) == len(aliases)
-
     #
     # NB. The following fails when writer_class is a partial
     #
@@ -111,8 +117,8 @@ def join(
     for f in frames:
         assert f.config['num_partitions'] == num_partitions
 
-    if num_subprocesses is None:
-        num_subprocesses = multiprocessing.cpu_count()
+    if subs is None:
+        subs = multiprocessing.cpu_count()
 
     def generate_work(temp_paths):
         assert len(temp_paths) == num_partitions
@@ -120,20 +126,20 @@ def join(
             yield (
                 partition_num,
                 [f[partition_num] for f in frames],
+                temp_path,
                 selected_fields,
                 aliases,
-                temp_path,
                 writer_class,
             )
 
     with tempfile.TemporaryDirectory(prefix='datawelder-') as temp_dir:
         temp_paths = [P.join(temp_dir, str(i)) for i in range(num_partitions)]
 
-        if num_subprocesses == 1:
+        if subs == 1:
             for args in generate_work(temp_paths):
                 _join_partitions(*args)
         else:
-            pool = multiprocessing.Pool(num_subprocesses)
+            pool = multiprocessing.Pool(subs)
             pool.starmap(_join_partitions, generate_work(temp_paths))
         datawelder.cat.cat(temp_paths, destination)
 
@@ -207,7 +213,7 @@ def main():
         type=str,
         help='Select a subset of output fields to keep',
     )
-    parser.add_argument('--subprocesses', type=int)
+    parser.add_argument('--subs', type=int)
     parser.add_argument('--loglevel', default=logging.INFO)
     args = parser.parse_args()
 
@@ -218,8 +224,7 @@ def main():
     if args.select:
         selected_names, aliases = _select(dataframes, args.select)
     else:
-        selected_names = join_field_names(dataframes)
-        aliases = selected_names
+        selected_names = aliases = None
 
     if args.format == datawelder.io.PICKLE:
         writer_class = datawelder.io.PickleWriter
@@ -239,7 +244,7 @@ def main():
         selected_names,
         aliases,
         writer_class=writer_class,
-        num_subprocesses=args.subprocesses,
+        subs=args.subs,
     )
 
 
