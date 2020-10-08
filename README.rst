@@ -77,11 +77,11 @@ You can merge them with any other partitioned dataset with ease:
 
     $ python -m datawelder.join out.json partitions/names partitions/currencies --format json
     $ head -n 5 out.json
+    {"0.iso3": "AND", "0.name": "Principality of Andorra", "1.currency": "Euro"}
+    {"0.iso3": "ARM", "0.name": "Republic of Armenia", "1.currency": "Dram"}
     {"0.iso3": "AGO", "0.name": "Republic of Angola", "1.currency": "Kwanza"}
-    {"0.iso3": "AUS", "0.name": "Commonwealth of Australia", "1.currency": "Dollar"}
-    {"0.iso3": "BGR", "0.name": "Republic of Bulgaria", "1.currency": "Lev"}
-    {"0.iso3": "BLM", "0.name": "Saint Barthelemy", "1.currency": "Euro"}
-    {"0.iso3": "BRN", "0.name": "Brunei Darussalam", "1.currency": "Dollar"}
+    {"0.iso3": "AZE", "0.name": "Republic of Azerbaijan", "1.currency": "Manat"}
+    {"0.iso3": "BRB", "0.name": "Barbados", "1.currency": "Dollar"}
 
 You can also select a subset of fields to keep (similar to SQL SELECT):
 
@@ -97,10 +97,10 @@ You can also select a subset of fields to keep (similar to SQL SELECT):
 
     $ head -n 5 out.csv
     0.name,1.currency
+    Principality of Andorra,Euro
+    Republic of Armenia,Dram
     Republic of Angola,Kwanza
-    Commonwealth of Australia,Dollar
-    Republic of Bulgaria,Lev
-    Saint Barthelemy,Euro
+    Republic of Azerbaijan,Manat
 
 The name of each column is prefixed by the number of the dataframe it came from.
 For example, ``1.currency`` means "the currency field from dataframe 1".
@@ -112,10 +112,10 @@ You can also rename the selected fields as desired (again, similar to SQL SELECT
     $ python -m datawelder.join out.csv partitions/names partitions/currencies --format csv --select '0.name as name, 1.currency as curr'
     $ head -n 5 out.csv
     name,curr
+    Principality of Andorra,Euro
+    Republic of Armenia,Dram
     Republic of Angola,Kwanza
-    Commonwealth of Australia,Dollar
-    Republic of Bulgaria,Lev
-    Saint Barthelemy,Euro
+    Republic of Azerbaijan,Manat
     
 How does it work?
 -----------------

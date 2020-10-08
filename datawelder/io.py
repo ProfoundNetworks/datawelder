@@ -1,5 +1,6 @@
 """Implements functions for reading and writing from/to files."""
 import csv
+import functools
 import json
 import logging
 import pickle
@@ -12,6 +13,7 @@ from typing import (
     List,
     Optional,
     Tuple,
+    Type,
     Union,
 )
 
@@ -28,6 +30,8 @@ def sniff_format(path: str) -> str:
         return CSV
     if '.json' in path:
         return JSON
+    if '.pickle' in path:
+        return PICKLE
     assert False, 'uknown format: %r' % path
 
 
@@ -83,6 +87,13 @@ class CsvReader(AbstractReader):
 
 
 class JsonReader(AbstractReader):
+    def __enter__(self):
+        #
+        # Better to read in binary mode, because of unicode line ending weirdness.
+        #
+        self._fin = smart_open.open(self.path, 'rb')
+        return self
+
     def __next__(self):
         line = next(self._fin)
         record_dict = json.loads(line)
@@ -218,3 +229,38 @@ class CsvWriter(AbstractWriter):
     def write(self, record):
         row = [record[i] for i in self._field_indices]
         self._writer.writerow(row)
+
+
+def open_reader(
+    path: str,
+    key: Union[int, str] = 0,
+    field_names: Optional[List[str]] = None,
+    fmt: Optional[str] = None,
+    fmtparams: Optional[Dict[str, str]] = None,
+) -> AbstractReader:
+    if fmt is None:
+        fmt = sniff_format(path)
+
+    cls: Type[AbstractReader] = JsonReader
+    if fmt == CSV:
+        cls = CsvReader
+    elif fmt == JSON:
+        cls = JsonReader
+    else:
+        assert False
+
+    return cls(path, key, field_names, fmtparams)
+
+
+def partial_writer(fmt: str, fmtparams: Optional[Dict[str, str]] = None) -> Any:
+    cls: Type[AbstractWriter] = PickleWriter
+    if fmt == PICKLE:
+        cls = PickleWriter
+    elif fmt == JSON:
+        cls = JsonWriter
+    elif fmt == CSV:
+        cls = CsvWriter
+    else:
+        assert False
+
+    return functools.partial(cls, fmtparams=fmtparams)

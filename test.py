@@ -27,11 +27,14 @@ def g():
 for (command, expected_output) in g():
     print(command.strip())
 
-    stdout = subprocess.check_output(shlex.split(command)).strip().decode('utf-8')
-    expected_output = expected_output.strip()
+    stdout = subprocess.check_output(shlex.split(command))
+    stdout = stdout.strip().decode('utf-8').replace('\r\n', '\n')
+    expected_output = expected_output.strip().replace('\r\n', '\n')
+
     if stdout == expected_output:
         print('OK')
     else:
+        print('NG')
         print('>>>>')
         print(expected_output)
         print('====')

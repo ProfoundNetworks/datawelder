@@ -56,7 +56,8 @@ def _join_partitions(
             lookup[i][record[part.key_index]] = record
 
     #
-    # Do not output the join key multiple times, because it is redundant.
+    # Do not output the join key multiple times, unless the caller explicitly
+    # asked for it.
     #
     if selected_fields is None:
         selected_fields = aliases = list(field_names)
@@ -226,18 +227,8 @@ def main():
     else:
         selected_names = aliases = None
 
-    if args.format == datawelder.io.PICKLE:
-        writer_class = datawelder.io.PickleWriter
-    elif args.format == datawelder.io.JSON:
-        writer_class = datawelder.io.JsonWriter
-    elif args.format == datawelder.io.CSV:
-        writer_class = datawelder.io.CsvWriter
-    else:
-        assert False
-
     fmtparams = datawelder.io.parse_fmtparams(args.fmtparams)
-    writer_class = functools.partial(writer_class, fmtparams=fmtparams)
-
+    writer_class = datawelder.io.partial_writer(args.format, fmtparams)
     join(
         dataframes,
         args.destination,

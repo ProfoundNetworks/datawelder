@@ -20,12 +20,12 @@ Each record will be a tuple.  You can convert it to a more helpful format::
 """
 
 import contextlib
+import hashlib
 import logging
 import os
 import os.path as P
 import pickle
 import resource
-import zlib
 
 from typing import (
     Any,
@@ -122,7 +122,7 @@ def open_partitions(
             fin.close()
 
 
-def calculate_key(key: str, num_shards: int) -> int:
+def calculate_key(key: str, num_partitions: int) -> int:
     """Map an arbitrary string to a shard number.
 
     :param key: The key to use for hashing.
@@ -134,7 +134,9 @@ def calculate_key(key: str, num_shards: int) -> int:
     # adler32 is documented as faster than crc32, but I haven't seen any
     # difference between the two in my benchmarks.
     #
-    return zlib.adler32(key.encode(datawelder.io.ENCODING)) % num_shards
+    h = hashlib.md5()
+    h.update(key.encode(datawelder.io.ENCODING))
+    return int(h.hexdigest(), 16) % num_partitions
 
 
 class PartitionedFrame:
@@ -298,8 +300,7 @@ def main():
     parser.add_argument(
         '--format',
         type=str,
-        default='auto',
-        choices=('auto', datawelder.io.CSV, datawelder.io.JSON),
+        choices=(datawelder.io.CSV, datawelder.io.JSON),
         help='The format of the source file',
     )
     parser.add_argument(
@@ -316,19 +317,6 @@ def main():
 
     logging.basicConfig(level=args.loglevel)
 
-    source_format = datawelder.io.CSV
-    if args.format in (None, 'auto'):
-        source_format = datawelder.io.sniff_format(args.source)
-
-    if source_format == datawelder.io.CSV:
-        cls = datawelder.io.CsvReader
-    elif source_format == datawelder.io.JSON:
-        cls = datawelder.io.JsonReader
-    else:
-        assert False
-
-    fmtparams = datawelder.io.parse_fmtparams(args.fmtparams)
-
     key: Union[int, str, None] = None
     if args.keyindex:
         key = args.keyindex
@@ -338,7 +326,15 @@ def main():
         key = 0
     assert key is not None
 
-    with cls(args.source, key, args.fieldnames, fmtparams) as reader:
+    fmtparams = datawelder.io.parse_fmtparams(args.fmtparams)
+
+    with datawelder.io.open_reader(
+        args.source,
+        key,
+        args.fieldnames,
+        args.format,
+        fmtparams,
+    ) as reader:
         partition(reader, args.destination, args.numpartitions)
 
 
