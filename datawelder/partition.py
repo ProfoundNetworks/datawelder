@@ -30,6 +30,7 @@ import zlib
 from typing import (
     Any,
     Callable,
+    IO,
     Iterator,
     List,
     Optional,
@@ -41,6 +42,7 @@ import smart_open.s3  # type: ignore
 import yaml
 
 import datawelder.io
+import datawelder.s3
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -66,6 +68,22 @@ def _update_soft_limit(soft_limit: int, limit_type: int = resource.RLIMIT_NOFILE
     resource.setrlimit(limit_type, (old_soft_limit, hard_limit))
 
 
+def _open(path: str, mode: str) -> IO[bytes]:
+    if mode == 'wb' and path.startswith('s3://'):
+        #
+        # The default S3 writers in smart_open are too memory-hungry, so use
+        # a custom implementation here.
+        #
+        uri = smart_open.parse_uri(path)
+        return datawelder.s3.LightweightWriter(  # type: ignore
+            uri.bucket,
+            uri.key,
+            min_part_size=datawelder.s3.MIN_MIN_PART_SIZE,
+        )
+
+    return smart_open.open(path, mode)
+
+
 @contextlib.contextmanager
 def open_partitions(
     path_format: str,
@@ -82,27 +100,15 @@ def open_partitions(
     """
     _LOGGER.info("opening partitions: %r %r", path_format, mode)
 
-    #
-    # When writing to S3, smart_open buffers parts in memory until the minimum
-    # part size is reached, and only then performs the upload.  If we're
-    # writing to a large number of partitions simultaneously, the memory usage
-    # can become very high.  Reduce the limit to the minimum allowable to
-    # keep memory usage down.
-    #
-    tparams = {}
-    if path_format.startswith('s3://'):
-        tparams['min_part_size'] = smart_open.s3.MIN_MIN_PART_SIZE
     partition_paths = [path_format % i for i in range(num_partitions)]
 
     #
-    # Temporarily bump the max number of open files to twice the number of
-    # partitions, to be safe.  This appears to only be necessary on MacOS.
+    # Temporarily bump the max number of open files.  If we don't do this,
+    # and open a large number of partitions, things like SSL signing will
+    # start failing mysteriously.
     #
-    with _update_soft_limit(num_partitions * 2):
-        gzip_streams = [
-            smart_open.open(path, mode=mode, transport_params=tparams)
-            for path in partition_paths
-        ]
+    with _update_soft_limit(num_partitions * 100):
+        gzip_streams = [_open(path, mode=mode) for path in partition_paths]
         for path, stream in zip(partition_paths, gzip_streams):
             stream.path_to_file = path  # type: ignore
 
