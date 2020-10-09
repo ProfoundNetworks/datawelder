@@ -252,7 +252,9 @@ def partition(
     abs_partition_format = P.join(destination_path, partition_format)
 
     with open_partitions(abs_partition_format, num_partitions, mode='wb') as partitions:
-        for record in reader:
+        for i, record in enumerate(reader, 1):
+            if i % 100000 == 0:
+                _LOGGER.info('processed record #%d', i)
             key = record[key_index]
             partition_index = calculate_key(key, num_partitions)
             pickle.dump(record, partitions[partition_index])

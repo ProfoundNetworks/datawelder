@@ -41,11 +41,11 @@ class LightweightWriter(io.BufferedIOBase):
 
         self._bucket: str = bucket
         self._key: str = key
-        self._min_part_size = min_part_size
+        self._min_part_size: int = min_part_size
 
         self._buf: IO[bytes] = tempfile.NamedTemporaryFile(prefix='datawelder-buf-')
         self._mpid: Optional[str] = None
-        self._parts: List[Tuple[int, str]] = []
+        self._etags: List[str] = []
         self._closed: bool = False
         self._total_bytes: int = 0
         self._total_parts: int = 0
@@ -77,14 +77,14 @@ class LightweightWriter(io.BufferedIOBase):
         partinfo = {
             'Parts': [
                 {'PartNumber': partnum, 'ETag': etag}
-                for partnum, etag in self._parts
+                for partnum, etag in enumerate(self._etags, 1)
             ]
         }
         _LOGGER.debug('partinfo: %r', partinfo)
         multipart_upload.complete(MultipartUpload=partinfo)
 
         self._mpid = None
-        self._parts = []
+        self._etags = []
 
         del s3
         del multipart_upload
@@ -170,7 +170,7 @@ class LightweightWriter(io.BufferedIOBase):
         )
         _LOGGER.debug('%s finished, ETag: %r', message, uploaded_part['ETag'])
 
-        self._parts.append((part_num, uploaded_part['ETag']))
+        self._etags.append(uploaded_part['ETag'])
         self._total_parts += 1
 
         self._buf.seek(0)
@@ -227,15 +227,8 @@ def main():
 
     logging.basicConfig(level=logging.INFO)
 
-    session = boto3.Session()
-
     with open(args.sourcepath, 'rb') as fin:
-        with LightweightWriter(
-            args.bucket,
-            args.key,
-            session,
-            min_part_size=args.minpartsize,
-        ) as writer:
+        with LightweightWriter(args.bucket, args.key, min_part_size=args.minpartsize) as writer:
             while True:
                 buf = fin.read(io.DEFAULT_BUFFER_SIZE)
                 if not buf:
