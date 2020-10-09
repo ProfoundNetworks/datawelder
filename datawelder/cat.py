@@ -10,7 +10,6 @@ from typing import (
 )
 
 
-
 def cat(sources: List[str], destination: str) -> None:
     #
     # If destination is S3, may be able to do a multipart upload instead of

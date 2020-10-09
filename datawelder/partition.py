@@ -41,7 +41,7 @@ import smart_open  # type: ignore
 import smart_open.s3  # type: ignore
 import yaml
 
-import datawelder.io
+import datawelder.readwrite
 import datawelder.s3
 
 _LOGGER = logging.getLogger(__name__)
@@ -76,8 +76,8 @@ def _open(path: str, mode: str) -> IO[bytes]:
         #
         uri = smart_open.parse_uri(path)
         return datawelder.s3.LightweightWriter(  # type: ignore
-            uri.bucket,
-            uri.key,
+            uri.bucket_id,
+            uri.key_id,
             min_part_size=datawelder.s3.MIN_MIN_PART_SIZE,
         )
 
@@ -135,7 +135,7 @@ def calculate_key(key: str, num_partitions: int) -> int:
     # difference between the two in my benchmarks.
     #
     h = hashlib.md5()
-    h.update(key.encode(datawelder.io.ENCODING))
+    h.update(key.encode(datawelder.readwrite.ENCODING))
     return int(h.hexdigest(), 16) % num_partitions
 
 
@@ -236,7 +236,7 @@ class Partition:
 
 
 def partition(
-    reader: 'datawelder.io.AbstractReader',
+    reader: 'datawelder.readwrite.AbstractReader',
     destination_path: str,
     num_partitions: int,
     field_names: Optional[List[str]] = None,
@@ -302,7 +302,7 @@ def main():
     parser.add_argument(
         '--format',
         type=str,
-        choices=(datawelder.io.CSV, datawelder.io.JSON),
+        choices=(datawelder.readwrite.CSV, datawelder.readwrite.JSON),
         help='The format of the source file',
     )
     parser.add_argument(
@@ -328,9 +328,9 @@ def main():
         key = 0
     assert key is not None
 
-    fmtparams = datawelder.io.parse_fmtparams(args.fmtparams)
+    fmtparams = datawelder.readwrite.parse_fmtparams(args.fmtparams)
 
-    with datawelder.io.open_reader(
+    with datawelder.readwrite.open_reader(
         args.source,
         key,
         args.fieldnames,

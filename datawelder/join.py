@@ -25,7 +25,7 @@ from typing import (
 )
 
 import datawelder.cat
-import datawelder.io
+import datawelder.readwrite
 
 if TYPE_CHECKING:
     from . import partition
@@ -39,7 +39,7 @@ def _join_partitions(
     output_path: str,
     selected_fields: Optional[List[str]] = None,
     aliases: Optional[List[str]] = None,
-    writer_class: Any = 'datawelder.io.PickleWriter',
+    writer_class: Any = 'datawelder.readwrite.PickleWriter',
 ) -> None:
     #
     # Load all partitions into memory, except for the first one, because we
@@ -103,7 +103,7 @@ def join(
     destination: str,
     selected_fields: Optional[List[str]] = None,
     aliases: Optional[List[str]] = None,
-    writer_class: Any = 'datawelder.io.PickleWriter',
+    writer_class: Any = 'datawelder.readwrite.PickleWriter',
     subs: Optional[int] = None,
 ) -> Any:
     #
@@ -196,11 +196,11 @@ def main():
     parser.add_argument('sources', nargs='+', help='Which partitioned dataframes (subdirectories) to join')
     parser.add_argument(
         '--format',
-        default=datawelder.io.PICKLE,
+        default=datawelder.readwrite.PICKLE,
         choices=(
-            datawelder.io.CSV,
-            datawelder.io.JSON,
-            datawelder.io.PICKLE,
+            datawelder.readwrite.CSV,
+            datawelder.readwrite.JSON,
+            datawelder.readwrite.PICKLE,
         ),
     )
     parser.add_argument(
@@ -227,8 +227,8 @@ def main():
     else:
         selected_names = aliases = None
 
-    fmtparams = datawelder.io.parse_fmtparams(args.fmtparams)
-    writer_class = datawelder.io.partial_writer(args.format, fmtparams)
+    fmtparams = datawelder.readwrite.parse_fmtparams(args.fmtparams)
+    writer_class = datawelder.readwrite.partial_writer(args.format, fmtparams)
     join(
         dataframes,
         args.destination,
