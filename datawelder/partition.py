@@ -20,6 +20,7 @@ Each record will be a tuple.  You can convert it to a more helpful format::
 """
 
 import contextlib
+import gzip
 import hashlib
 import logging
 import os
@@ -75,11 +76,14 @@ def _open(path: str, mode: str) -> IO[bytes]:
         # a custom implementation here.
         #
         uri = smart_open.parse_uri(path)
-        return datawelder.s3.LightweightWriter(  # type: ignore
-            uri.bucket_id,
-            uri.key_id,
+        fileobj = datawelder.s3.LightweightWriter(
+            uri.bucket,
+            uri.key,
             min_part_size=datawelder.s3.MIN_MIN_PART_SIZE,
         )
+        if path.endswith('.gz'):
+            return gzip.GzipFile(fileobj=fileobj, mode=mode)  # type: ignore
+        return fileobj  # type: ignore
 
     return smart_open.open(path, mode)
 
@@ -91,8 +95,6 @@ def open_partitions(
     mode: str = "rt",
 ) -> Iterator[List]:
     """Open partitions based on the provided string pattern.
-
-    Injects the `path_to_file` attribute to the resulting file objects.
 
     :param path_format: The format to use when determining partition paths.
     :param num_partitions: The number of partitions to open.
@@ -108,32 +110,20 @@ def open_partitions(
     # start failing mysteriously.
     #
     with _update_soft_limit(num_partitions * 100):
-        gzip_streams = [_open(path, mode=mode) for path in partition_paths]
-        for path, stream in zip(partition_paths, gzip_streams):
-            stream.path_to_file = path  # type: ignore
+        streams = [_open(path, mode=mode) for path in partition_paths]
 
-        yield gzip_streams
+        yield streams
 
         #
         # We want to make sure the files are _really_ closed to avoid running
         # into "Too many open files" error later.
         #
-        for fin in gzip_streams:
+        for fin in streams:
             fin.close()
 
 
 def calculate_key(key: str, num_partitions: int) -> int:
-    """Map an arbitrary string to a shard number.
-
-    :param key: The key to use for hashing.
-    :param num_shards: The number of shards to use.
-    :returns: The number of the partition.
-    """
-    #
-    # zlib.crc32 is approx. twice as fast as hashlib.sha1, .md5 and friends.
-    # adler32 is documented as faster than crc32, but I haven't seen any
-    # difference between the two in my benchmarks.
-    #
+    """Map an arbitrary string to a shard number."""
     h = hashlib.md5()
     h.update(key.encode(datawelder.readwrite.ENCODING))
     return int(h.hexdigest(), 16) % num_partitions
@@ -151,14 +141,16 @@ class PartitionedFrame:
         self.selected_fields = self.field_names
 
     def __len__(self):
+        """Returns the number of partitions in this partitioned frame."""
         return self.config['num_partitions']
 
     def __getitem__(self, key: Any) -> Any:
+        """Returns a partition given its ordinal number (zero-based)."""
         if not isinstance(key, int):
             raise ValueError('key must be an integer indicating the number of the partition')
 
         partition_number = int(key)
-        if partition_number > len(self):
+        if partition_number >= len(self):
             raise ValueError('key must be less than %d' % self.config['num_partitions'])
 
         names = list(self.selected_fields)
@@ -171,6 +163,12 @@ class PartitionedFrame:
         return Partition(partition_path, indices, names, keyindex)
 
     def select(self, field_names: List[str]) -> None:
+        """Restricts the fields to be loaded from this frame to a subset.
+
+        This has no effect on the stored data.  It only affects frames loaded
+        from the data from this point onwards.  The data on disk will remain
+        the same.
+        """
         for f in field_names:
             if f not in self.field_names:
                 raise ValueError('expected %r to be one of %r' % (f, self.field_names))
@@ -178,15 +176,21 @@ class PartitionedFrame:
         self.selected_fields = field_names
 
     @property
-    def field_names(self):
+    def field_names(self) -> List[str]:
+        """Returns the names of the fields used by this frame.
+
+        The names will be in the order they are stored on disk.
+        """
         return self.config['field_names']
 
     @property
-    def key_index(self):
+    def key_index(self) -> int:
+        """Returns the index of the partition key."""
         return self.config['key_index']
 
     @property
-    def key_name(self):
+    def key_name(self) -> str:
+        """Returns the name of the partition key."""
         return self.field_names[self.key_index]
 
 
@@ -258,6 +262,8 @@ def partition(
             key = record[key_index]
             partition_index = calculate_key(key, num_partitions)
             pickle.dump(record, partitions[partition_index])
+
+    _LOGGER.info('wrote %d records to %d partitions', i, num_partitions)
 
     config = {
         'field_names': reader.field_names,
