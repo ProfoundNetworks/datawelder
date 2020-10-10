@@ -77,8 +77,8 @@ def _open(path: str, mode: str) -> IO[bytes]:
         #
         uri = smart_open.parse_uri(path)
         fileobj = datawelder.s3.LightweightWriter(
-            uri.bucket,
-            uri.key,
+            uri.bucket_id,
+            uri.key_id,
             min_part_size=datawelder.s3.MIN_MIN_PART_SIZE,
         )
         if path.endswith('.gz'):
