@@ -146,7 +146,7 @@ class LightweightWriter(io.BufferedIOBase):
             del object_
 
         part_num = self._total_parts + 1
-        _LOGGER.info(
+        _LOGGER.debug(
             "uploading bucket %r key %r part #%i, %i bytes (total %.3fGB)",
             self._bucket,
             self._key,
