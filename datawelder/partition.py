@@ -257,7 +257,7 @@ def partition(
 
     with open_partitions(abs_partition_format, num_partitions, mode='wb') as partitions:
         for i, record in enumerate(reader, 1):
-            if i % 100000 == 0:
+            if i % 1000000 == 0:
                 _LOGGER.info('processed record #%d', i)
             key = record[key_index]
             partition_index = calculate_key(key, num_partitions)
