@@ -179,7 +179,7 @@ class AbstractWriter:
         return self
 
     def __exit__(self, *exc):
-        pass
+        self._fout.close()
 
     def write(self, record: List[Any]) -> None:
         raise NotImplementedError

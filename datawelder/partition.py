@@ -143,6 +143,12 @@ class PartitionedFrame:
         """Returns the number of partitions in this partitioned frame."""
         return self.config['num_partitions']
 
+    def __iter__(self):
+        def g():
+            for i in range(len(self)):
+                yield self[i]
+        return g()
+
     def __getitem__(self, key: Any) -> Any:
         """Returns a partition given its ordinal number (zero-based)."""
         if not isinstance(key, int):
@@ -247,6 +253,10 @@ def sort_partition(path: str, key_index: int) -> None:
     Sorting partitions simplifies joining, as long as all the partitions are
     sorted in the same way.
     """
+    #
+    # TODO: more memory-efficient sorting?  Is it worth it?  The partitions
+    # are already quite small (by design).
+    #
     def g():
         with smart_open.open(path, 'rb') as fin:
             while True:
@@ -300,7 +310,13 @@ def partition(
     with smart_open.open(P.join(destination_path, 'datawelder.yaml'), 'w') as fout:
         yaml.dump(config, fout)
 
-    return PartitionedFrame(destination_path)
+    #
+    # N.B. Parallelize the sorting?  Need to be careful of EOM because the
+    # sort loads each partition in memory in its entirety.
+    #
+    frame = PartitionedFrame(destination_path)
+    for part in frame:
+        sort_partition(part.path, part.key_index)
 
 
 def main():

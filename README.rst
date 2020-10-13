@@ -75,19 +75,20 @@ You can merge them with any other partitioned dataset with ease:
 
 .. code:: bash
 
-    $ python -m datawelder.join out.json partitions/names partitions/currencies --format json
+    $ python -m datawelder.join out.json partitions/names partitions/currencies --format json --subs 1
     $ head -n 5 out.json
+    {"0.iso3": "AGO", "0.name": "Republic of Angola", "1.currency": "Kwanza"}
     {"0.iso3": "AND", "0.name": "Principality of Andorra", "1.currency": "Euro"}
     {"0.iso3": "ARM", "0.name": "Republic of Armenia", "1.currency": "Dram"}
-    {"0.iso3": "AGO", "0.name": "Republic of Angola", "1.currency": "Kwanza"}
+    {"0.iso3": "ATF", "0.name": "French Southern and Antarctic Lands", "1.currency": "Euro"}
     {"0.iso3": "AZE", "0.name": "Republic of Azerbaijan", "1.currency": "Manat"}
-    {"0.iso3": "BRB", "0.name": "Barbados", "1.currency": "Dollar"}
+
 
 You can also select a subset of fields to keep (similar to SQL SELECT):
 
 .. code:: bash
 
-    $ python -m datawelder.join out.csv partitions/names partitions/currencies --format csv --select 0.name,1.currency
+    $ python -m datawelder.join out.csv partitions/names partitions/currencies --format csv --select 0.name,1.currency --subs 1
     $ grep -i andorra out.csv
     Principality of Andorra,Euro
 
@@ -97,10 +98,10 @@ You can also select a subset of fields to keep (similar to SQL SELECT):
 
     $ head -n 5 out.csv
     0.name,1.currency
+    Republic of Angola,Kwanza
     Principality of Andorra,Euro
     Republic of Armenia,Dram
-    Republic of Angola,Kwanza
-    Republic of Azerbaijan,Manat
+    French Southern and Antarctic Lands,Euro
 
 The name of each column is prefixed by the number of the dataframe it came from.
 For example, ``1.currency`` means "the currency field from dataframe 1".
@@ -109,13 +110,22 @@ You can also rename the selected fields as desired (again, similar to SQL SELECT
 
 .. code:: bash
 
-    $ python -m datawelder.join out.csv partitions/names partitions/currencies --format csv --select '0.name as name, 1.currency as curr'
+    $ python -m datawelder.join out.csv partitions/names partitions/currencies --format csv --select '0.name as name, 1.currency as curr' --subs 1
     $ head -n 5 out.csv
     name,curr
+    Republic of Angola,Kwanza
     Principality of Andorra,Euro
     Republic of Armenia,Dram
-    Republic of Angola,Kwanza
-    Republic of Azerbaijan,Manat
+    French Southern and Antarctic Lands,Euro
+
+Finally, you can use multiple processes for joining.
+The default is the number of CPUs.
+The order of the rows in the output file may differ due to race conditions,
+but this does not affect the integrity of the data.
+
+.. code:: bash
+
+    $ python -m datawelder.join out.csv partitions/names partitions/currencies --format csv --select '0.name as name, 1.currency as curr' --subs 4
     
 How does it work?
 -----------------

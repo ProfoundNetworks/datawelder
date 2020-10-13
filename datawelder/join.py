@@ -33,6 +33,58 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
+def _join_partitions_sorted(
+    partition_num: int,
+    partitions: List['partition.Partition'],
+    output_path: str,
+    selected_fields: Optional[List[str]] = None,
+    aliases: Optional[List[str]] = None,
+    writer_class: Any = 'datawelder.readwrite.PickleWriter',
+) -> None:
+    def mkdefault(p):
+        return [None for _ in p.field_names]
+
+    def getnext(p):
+        try:
+            return next(p)
+        except StopIteration:
+            return None
+
+    leftpart = partitions.pop(0)
+    peek = [getnext(p) for p in partitions]
+    defaults = [mkdefault(p) for p in partitions]
+
+    field_names = ['0.%s' % f for f in leftpart.field_names]
+    for i, part in enumerate(partitions, 1):
+        field_names.extend(['%d.%s' % (i, n) for n in part.field_names])
+
+    #
+    # Do not output the join key multiple times, unless the caller explicitly
+    # asked for it.
+    #
+    if selected_fields is None:
+        selected_fields = aliases = list(field_names)
+        for i, part in enumerate(partitions, 1):
+            selected_fields.remove('%d.%s' % (i, part.field_names[part.key_index]))
+
+    field_indices = [field_names.index(f) for f in selected_fields]
+
+    with writer_class(output_path, partition_num, field_indices, aliases) as writer:
+        for leftrecord in leftpart:
+            leftkey = leftrecord[leftpart.key_index]
+            joinedrecord = list(leftrecord)
+            for i, rightpart in enumerate(partitions):
+                while peek[i] is not None and peek[i][rightpart.key_index] < leftkey:
+                    peek[i] = getnext(rightpart)
+
+                if peek[i] is None:
+                    joinedrecord.extend(defaults[i])
+                else:
+                    joinedrecord.extend(peek[i])
+
+                writer.write(joinedrecord)
+
+
 def _join_partitions(
     partition_num: int,
     partitions: List['partition.Partition'],
@@ -138,10 +190,10 @@ def join(
 
         if subs == 1:
             for args in generate_work(temp_paths):
-                _join_partitions(*args)
+                _join_partitions_sorted(*args)
         else:
             pool = multiprocessing.Pool(subs)
-            pool.starmap(_join_partitions, generate_work(temp_paths))
+            pool.starmap(_join_partitions_sorted, generate_work(temp_paths))
         datawelder.cat.cat(temp_paths, destination)
 
 
