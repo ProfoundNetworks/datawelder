@@ -1,8 +1,8 @@
 """Implements functionality for partitioning data frames.
 
-Partitioning a data frame::
+Partitioning a data frame into 32 partitions::
 
-    >>> partition('/data/foo.csv.gz', '/tmp/partitions/foo')
+    >>> partition('/data/foo.csv.gz', '/tmp/partitions/foo', 32)
 
 You can then work with the partitions of each frame, e.g. access records
 from the 27th partition::
@@ -16,7 +16,6 @@ Each record will be a tuple.  You can convert it to a more helpful format::
 
     >>> record_tuple = next(foo[27])
     >>> record_dict = dict(zip(foo.field_names, record_tuple))
-
 """
 
 import contextlib
@@ -239,6 +238,30 @@ class Partition:
             return [record[i] for i in self.field_indices]
 
 
+def sort_partition(path: str, key_index: int) -> None:
+    """Sorts the records in this partition by the value of the partition key.
+
+    Loads the entire partition into memory to perform the sort.
+    Modifies the partition's data on disk.
+
+    Sorting partitions simplifies joining, as long as all the partitions are
+    sorted in the same way.
+    """
+    def g():
+        with smart_open.open(path, 'rb') as fin:
+            while True:
+                try:
+                    yield pickle.load(fin)
+                except EOFError:
+                    break
+
+    records = sorted(g(), key=lambda r: r[key_index])
+
+    with smart_open.open(path, 'wb') as fout:
+        for r in records:
+            pickle.dump(r, fout)
+
+
 def partition(
     reader: 'datawelder.readwrite.AbstractReader',
     destination_path: str,
@@ -260,7 +283,7 @@ def partition(
             if i % 1000000 == 0:
                 _LOGGER.info('processed record #%d', i)
             key = record[key_index]
-            partition_index = calculate_key(key, num_partitions)
+            partition_index = key_function(key, num_partitions)
             pickle.dump(record, partitions[partition_index])
 
     _LOGGER.info('wrote %d records to %d partitions', i, num_partitions)
@@ -291,7 +314,7 @@ def main():
         '--fieldnames',
         nargs='+',
         help=(
-            'The names of fields to load. If not specified, will attemp to '
+            'The names of fields to load. If not specified, will attempt to '
             'read from the first line of the source file.'
         ),
     )

@@ -9,7 +9,6 @@ from typing import (
     IO,
     List,
     Optional,
-    Tuple,
 )
 
 import botocore  # type: ignore
@@ -43,12 +42,11 @@ class LightweightWriter(io.BufferedIOBase):
         self._key: str = key
         self._min_part_size: int = min_part_size
 
-        self._buf: IO[bytes] = tempfile.NamedTemporaryFile(prefix='datawelder-buf-')
+        self._buf: IO[bytes] = tempfile.NamedTemporaryFile(prefix='datawelder-%s-' % key)
         self._mpid: Optional[str] = None
         self._etags: List[str] = []
         self._closed: bool = False
         self._total_bytes: int = 0
-        self._total_parts: int = 0
 
         #
         # This member is part of the io.BufferedIOBase interface.
@@ -81,6 +79,10 @@ class LightweightWriter(io.BufferedIOBase):
             ]
         }
         _LOGGER.debug('partinfo: %r', partinfo)
+
+        #
+        # TODO: check that this thing succeeded
+        #
         multipart_upload.complete(MultipartUpload=partinfo)
 
         self._mpid = None
@@ -145,7 +147,7 @@ class LightweightWriter(io.BufferedIOBase):
             self._mpid = multipart_upload.id
             del object_
 
-        part_num = self._total_parts + 1
+        part_num = len(self._etags) + 1
         _LOGGER.debug(
             "uploading bucket %r key %r part #%i, %i bytes (total %.3fGB)",
             self._bucket,
@@ -171,8 +173,6 @@ class LightweightWriter(io.BufferedIOBase):
         _LOGGER.debug('%s finished, ETag: %r', message, uploaded_part['ETag'])
 
         self._etags.append(uploaded_part['ETag'])
-        self._total_parts += 1
-
         self._buf.seek(0)
         self._buf.truncate(0)
 
