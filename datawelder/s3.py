@@ -2,6 +2,7 @@ import functools
 import gc
 import io
 import logging
+import os
 import tempfile
 import time
 
@@ -42,7 +43,8 @@ class LightweightWriter(io.BufferedIOBase):
         self._key: str = key
         self._min_part_size: int = min_part_size
 
-        self._buf: IO[bytes] = tempfile.NamedTemporaryFile(prefix='datawelder-%s-' % key)
+        prefix = 'datawelder-%s-' % os.path.splitext(key)[1]
+        self._buf: IO[bytes] = tempfile.NamedTemporaryFile(prefix=prefix)
         self._mpid: Optional[str] = None
         self._etags: List[str] = []
         self._closed: bool = False

@@ -4,18 +4,23 @@ import functools
 import json
 import logging
 import pickle
+import sys
 
 import smart_open  # type: ignore
 
 from typing import (
     Any,
+    Callable,
     Dict,
+    Iterator,
     List,
     Optional,
     Tuple,
     Type,
     Union,
 )
+
+DataType = Callable[[str], Any]
 
 _LOGGER = logging.getLogger(__name__)
 ENCODING = 'utf-8'
@@ -38,15 +43,20 @@ def sniff_format(path: str) -> str:
 class AbstractReader:
     def __init__(
         self,
-        path: str,
+        path: Optional[str] = None,
         key: Union[int, str] = 0,
         field_names: Optional[List[str]] = None,
         fmtparams: Optional[Dict[str, str]] = None,
+        types: Optional[List[DataType]] = None,
     ) -> None:
         self.path = path
         self._key = key
         self.field_names = field_names
         self.fmtparams = fmtparams
+        self.types = types
+
+        if field_names and types and len(field_names) != len(types):
+            raise ValueError('field_names and types must be of same length if specified')
 
         self.key_index: Optional[int] = None
         if isinstance(self._key, int):
@@ -55,7 +65,10 @@ class AbstractReader:
             self.key_index = self.field_names.index(self._key)
 
     def __enter__(self):
-        self._fin = smart_open.open(self.path, 'r')
+        if self.path is None:
+            self._fin = smart_open.open(self.path, 'r')
+        else:
+            self._fin = sys.stdin
         return self
 
     def __exit__(self, *exc):
@@ -71,7 +84,10 @@ class AbstractReader:
 class CsvReader(AbstractReader):
     def __enter__(self):
         fmtparams = csv_fmtparams(self.fmtparams)
-        self._fin = smart_open.open(self.path, 'r')
+        if self.path is None:
+            self._fin = sys.stdin
+        else:
+            self._fin = smart_open.open(self.path, 'r')
         self._reader = csv.reader(self._fin, **fmtparams)
 
         if not self.field_names:
@@ -83,7 +99,10 @@ class CsvReader(AbstractReader):
         return self
 
     def __next__(self):
-        return tuple(next(self._reader))
+        record = next(self._reader)
+        if self.types:
+            record = [t(column) for (t, column) in zip(self.types, record)]
+        return tuple(record)
 
 
 class JsonReader(AbstractReader):
@@ -91,7 +110,10 @@ class JsonReader(AbstractReader):
         #
         # Better to read in binary mode, because of unicode line ending weirdness.
         #
-        self._fin = smart_open.open(self.path, 'rb')
+        if self.path is None:
+            self._fin = sys.stdin.buffer
+        else:
+            self._fin = smart_open.open(self.path, 'rb')
         return self
 
     def __next__(self):
@@ -120,6 +142,53 @@ def parse_fmtparams(params: List[str]) -> Dict[str, str]:
         key, value = pair.split('=', 1)
         fmtparams[key] = value
     return fmtparams
+
+
+def parse_types(types: List[str]) -> Iterator[DataType]:
+    """Parses type definitions into callables.
+
+    Understands the following types: int, float and str.
+    The callables will replace values that failed to parse with ``None``.
+    For example::
+
+        >>> parse_int, parse_float, parse_str = parse_types(['int', 'float', 'str'])
+        >>> parse_int('10')
+        10
+        >>> parse_int('oops') is None
+        True
+
+    This is useful when dealing with CSV, which stores everything as strings.
+    If you can avoid CSV, then use something like JSON, which has types.
+    If you can't avoid CSV, try using these simple type definitions.
+    If the simple type definitions are not enough, then write your own.
+    You can then pass these type definitions to the ``open_reader`` function.
+
+    """
+    def parse_int(x):
+        try:
+            return int(x)
+        except ValueError:
+            return None
+
+    def parse_float(x):
+        try:
+            return float(x)
+        except ValueError:
+            return None
+
+    def parse_str(x):
+        return x
+
+    typemap: Dict[str, DataType] = {
+        'int': parse_int,
+        'float': parse_float,
+        'str': parse_str,
+    }
+    for typestr in types:
+        try:
+            yield typemap[typestr]
+        except KeyError:
+            yield str
 
 
 def csv_fmtparams(fmtparams: Dict[str, str]) -> Dict[str, Any]:
@@ -232,14 +301,20 @@ class CsvWriter(AbstractWriter):
 
 
 def open_reader(
-    path: str,
+    path: Optional[str] = None,
     key: Union[int, str] = 0,
     field_names: Optional[List[str]] = None,
     fmt: Optional[str] = None,
     fmtparams: Optional[Dict[str, str]] = None,
+    types: Optional[List[DataType]] = None,
 ) -> AbstractReader:
-    if fmt is None:
+    if path is None and fmt is None:
+        raise ValueError('must specify format when reading from stdin')
+    elif fmt is None:
+        assert path
         fmt = sniff_format(path)
+
+    assert fmt
 
     cls: Type[AbstractReader] = JsonReader
     if fmt == CSV:
@@ -249,7 +324,10 @@ def open_reader(
     else:
         assert False
 
-    return cls(path, key, field_names, fmtparams)
+    if fmt != CSV and types:
+        raise ValueError('the types parameter is only supported when reading CSV')
+
+    return cls(path, key, field_names, fmtparams, types)
 
 
 def partial_writer(fmt: str, fmtparams: Optional[Dict[str, str]] = None) -> Any:

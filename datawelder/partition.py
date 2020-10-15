@@ -324,6 +324,8 @@ def partition(
     for part in frame:
         sort_partition(part.path, part.key_index)
 
+    return frame
+
 
 def main():
     import argparse
@@ -362,6 +364,12 @@ def main():
         nargs='*',
         help='Additional params to pass to the reader, in key=value format',
     )
+    parser.add_argument(
+        '--types',
+        type=str,
+        nargs='+',
+        help='The data types for each column (CSV only)',
+    )
     parser.add_argument('--loglevel', default=logging.INFO)
     args = parser.parse_args()
 
@@ -380,13 +388,18 @@ def main():
     assert key is not None
 
     fmtparams = datawelder.readwrite.parse_fmtparams(args.fmtparams)
+    if args.types:
+        types = list(datawelder.readwrite.parse_types(args.types))
+    else:
+        types = None
 
     with datawelder.readwrite.open_reader(
-        args.source,
+        None if args.source == '-' else args.source,
         key,
         args.fieldnames,
         args.format,
         fmtparams,
+        types,
     ) as reader:
         partition(reader, args.destination, args.numpartitions)
 
