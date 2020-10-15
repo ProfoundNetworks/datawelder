@@ -277,7 +277,6 @@ def partition(
     destination_path: str,
     num_partitions: int,
     field_names: Optional[List[str]] = None,
-    key_index: int = 0,
     key_function: Callable[[str, int], int] = calculate_key,
 ) -> 'PartitionedFrame':
     """Partition a data frame."""
@@ -292,15 +291,22 @@ def partition(
         for i, record in enumerate(reader, 1):
             if i % 1000000 == 0:
                 _LOGGER.info('processed record #%d', i)
-            key = record[key_index]
+            key = record[reader.key_index]
+
+            assert key is not None
             partition_index = key_function(key, num_partitions)
             pickle.dump(record, partitions[partition_index])
 
     _LOGGER.info('wrote %d records to %d partitions', i, num_partitions)
 
+    #
+    # NB This can happen only after the first record has been read, because
+    # at this stage we can be sure the reader has been initialized completely,
+    # e.g. it knows what the field_names and key_index are.
+    #
     config = {
         'field_names': reader.field_names,
-        'key_index': key_index,
+        'key_index': reader.key_index,
         'source_path': reader.path,
         'num_partitions': num_partitions,
         'partition_format': partition_format,
