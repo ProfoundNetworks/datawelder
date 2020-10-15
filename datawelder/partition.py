@@ -124,7 +124,7 @@ def open_partitions(
 def calculate_key(key: str, num_partitions: int) -> int:
     """Map an arbitrary string to a shard number."""
     h = hashlib.md5()
-    h.update(key.encode(datawelder.readwrite.ENCODING))
+    h.update(str(key).encode(datawelder.readwrite.ENCODING))
     return int(h.hexdigest(), 16) % num_partitions
 
 
@@ -365,7 +365,7 @@ def main():
         help='Additional params to pass to the reader, in key=value format',
     )
     parser.add_argument(
-        '--types',
+        '--fieldtypes',
         type=str,
         nargs='+',
         help='The data types for each column (CSV only)',
@@ -375,6 +375,9 @@ def main():
 
     if args.keyindex and args.keyname:
         parser.error('--keyindex and --keyname are mutually exclusive')
+
+    if args.fieldtypes and args.fieldnames and len(args.fieldtypes) != len(args.fieldnames):
+        parser.error('fieldtypes and fieldnames must have the same length if specified')
 
     logging.basicConfig(level=args.loglevel)
 
@@ -388,10 +391,10 @@ def main():
     assert key is not None
 
     fmtparams = datawelder.readwrite.parse_fmtparams(args.fmtparams)
-    if args.types:
-        types = list(datawelder.readwrite.parse_types(args.types))
+    if args.fieldtypes:
+        fieldtypes = list(datawelder.readwrite.parse_types(args.fieldtypes))
     else:
-        types = None
+        fieldtypes = None
 
     with datawelder.readwrite.open_reader(
         None if args.source == '-' else args.source,
@@ -399,7 +402,7 @@ def main():
         args.fieldnames,
         args.format,
         fmtparams,
-        types,
+        fieldtypes,
     ) as reader:
         partition(reader, args.destination, args.numpartitions)
 
