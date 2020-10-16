@@ -141,8 +141,6 @@ class PartitionedFrame:
 
         assert self.config['config_format'] == 1
 
-        self.selected_fields = self.field_names
-
     def __len__(self):
         """Returns the number of partitions in this partitioned frame."""
         return self.config['num_partitions']
@@ -162,7 +160,7 @@ class PartitionedFrame:
         if partition_number >= len(self):
             raise ValueError('key must be less than %d' % self.config['num_partitions'])
 
-        names = list(self.selected_fields)
+        names = list(self.field_names)
         if self.key_name not in names:
             names.insert(0, self.key_name)
         indices = [self.field_names.index(f) for f in names]
@@ -170,19 +168,6 @@ class PartitionedFrame:
 
         partition_path = P.join(self.path, self.config['partition_format'] % partition_number)
         return Partition(partition_path, indices, names, keyindex)
-
-    def select(self, field_names: List[str]) -> None:
-        """Restricts the fields to be loaded from this frame to a subset.
-
-        This has no effect on the stored data.  It only affects frames loaded
-        from the data from this point onwards.  The data on disk will remain
-        the same.
-        """
-        for f in field_names:
-            if f not in self.field_names:
-                raise ValueError('expected %r to be one of %r' % (f, self.field_names))
-
-        self.selected_fields = field_names
 
     @property
     def field_names(self) -> List[str]:

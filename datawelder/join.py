@@ -8,7 +8,6 @@ Example usage::
 
 """
 
-import functools
 import logging
 import multiprocessing
 import os.path as P
@@ -26,6 +25,7 @@ from typing import (
 
 import datawelder.cat
 import datawelder.readwrite
+import datawelder.partition
 
 if TYPE_CHECKING:
     from . import partition
@@ -33,14 +33,17 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
-def _join_partitions_sorted(
-    partition_num: int,
-    partitions: List['partition.Partition'],
-    output_path: str,
-    selected_fields: Optional[List[str]] = None,
-    aliases: Optional[List[str]] = None,
-    writer_class: Any = 'datawelder.readwrite.PickleWriter',
-) -> None:
+def _name_fields(partitions_or_frames: List[Any]) -> List[str]:
+    """Assign names to fields in preparation for a join."""
+    leftpart, others = partitions_or_frames[0], partitions_or_frames[1:]
+    field_names = ['0.%s' % f for f in leftpart.field_names]
+    for i, part in enumerate(others, 1):
+        field_names.extend(['%d.%s' % (i, n) for n in part.field_names])
+    return field_names
+
+
+def _join_partitions(partitions: List[datawelder.partition.Partition]) -> Iterator[Tuple]:
+
     def mkdefault(p):
         return [None for _ in p.field_names]
 
@@ -54,58 +57,36 @@ def _join_partitions_sorted(
     peek = [getnext(p) for p in partitions]
     defaults = [mkdefault(p) for p in partitions]
 
-    field_names = ['0.%s' % f for f in leftpart.field_names]
-    for i, part in enumerate(partitions, 1):
-        field_names.extend(['%d.%s' % (i, n) for n in part.field_names])
+    for leftrecord in leftpart:
+        leftkey = leftrecord[leftpart.key_index]
+        joinedrecord = list(leftrecord)
+        for i, rightpart in enumerate(partitions):
+            while peek[i] is not None and peek[i][rightpart.key_index] < leftkey:
+                peek[i] = getnext(rightpart)
 
-    #
-    # Do not output the join key multiple times, unless the caller explicitly
-    # asked for it.
-    #
-    if selected_fields is None:
-        selected_fields = aliases = list(field_names)
-        for i, part in enumerate(partitions, 1):
-            selected_fields.remove('%d.%s' % (i, part.field_names[part.key_index]))
+            if peek[i] is None:
+                joinedrecord.extend(defaults[i])
+            else:
+                joinedrecord.extend(peek[i])
 
-    field_indices = [field_names.index(f) for f in selected_fields]
-
-    with writer_class(output_path, partition_num, field_indices, aliases) as writer:
-        for leftrecord in leftpart:
-            leftkey = leftrecord[leftpart.key_index]
-            joinedrecord = list(leftrecord)
-            for i, rightpart in enumerate(partitions):
-                while peek[i] is not None and peek[i][rightpart.key_index] < leftkey:
-                    peek[i] = getnext(rightpart)
-
-                if peek[i] is None:
-                    joinedrecord.extend(defaults[i])
-                else:
-                    joinedrecord.extend(peek[i])
-
-                writer.write(joinedrecord)
+            yield tuple(joinedrecord)
 
 
-def _join_partitions(
+def join_partitions(
     partition_num: int,
-    partitions: List['partition.Partition'],
+    frame_paths: List[str],
     output_path: str,
+    output_format: str = datawelder.readwrite.PICKLE,
+    fmtparams: Optional[Dict[str, str]] = None,
     selected_fields: Optional[List[str]] = None,
     aliases: Optional[List[str]] = None,
-    writer_class: Any = 'datawelder.readwrite.PickleWriter',
 ) -> None:
-    #
-    # Load all partitions into memory, except for the first one, because we
-    # will be iterating over it.
-    #
-    lookup: List[Dict] = [dict() for _ in partitions]
-    left_partition = partitions[0]
-    partitions = partitions[1:]
-    field_names = ['0.%s' % f for f in left_partition.field_names]
+    if selected_fields and aliases and len(selected_fields) != len(aliases):
+        raise ValueError('selected_fields and aliases must have same length if specified')
 
-    for i, part in enumerate(partitions, 1):
-        field_names.extend(['%d.%s' % (i, n) for n in part.field_names])
-        for record in part:
-            lookup[i][record[part.key_index]] = record
+    frames = [datawelder.partition.PartitionedFrame(fp) for fp in frame_paths]
+    partitions = [frame[partition_num] for frame in frames]
+    field_names = _name_fields(partitions)
 
     #
     # Do not output the join key multiple times, unless the caller explicitly
@@ -113,49 +94,35 @@ def _join_partitions(
     #
     if selected_fields is None:
         selected_fields = aliases = list(field_names)
-        for i, part in enumerate(partitions, 1):
-            selected_fields.remove('%d.%s' % (i, part.field_names[part.key_index]))
+        for i, part in enumerate(partitions):
+            if i > 0:
+                name = '%d.%s' % (i, part.field_names[part.key_index])
+                selected_fields.remove(name)
+
+    if aliases is None:
+        aliases = list(selected_fields)
 
     field_indices = [field_names.index(f) for f in selected_fields]
-    with writer_class(output_path, partition_num, field_indices, aliases) as writer:
-        for left_record in left_partition:
-            left_key = left_record[left_partition.key_index]
-            joined_record = list(left_record)
 
-            for i, right_partition in enumerate(partitions, 1):
-                try:
-                    #
-                    # Convert the tuple to a list here, as opposed to when
-                    # creating the lookup, because tuples are more compact.
-                    # We'll be throwing the list away shortly anyway.
-                    #
-                    right_record = list(lookup[i][left_key])
-                except KeyError:
-                    right_record = [None for _ in right_partition.field_names]
-                joined_record.extend(right_record)
-
-            writer.write(joined_record)
-
-
-def join_field_names(frames: List['partition.PartitionedFrame']) -> List[str]:
-    num_partitions = frames[0].config['num_partitions']
-    for f in frames:
-        assert f.config['num_partitions'] == num_partitions
-
-    fields = []
-    for i, frame in enumerate(frames):
-        field_frames = list(frame.selected_fields)
-        fields.extend(['%d.%s' % (i, f) for f in field_frames])
-
-    return fields
+    with datawelder.readwrite.open_writer(
+        output_path,
+        output_format,
+        partition_num,
+        field_indices=field_indices,
+        field_names=aliases,
+        fmtparams=fmtparams,
+    ) as writer:
+        for record in _join_partitions(partitions):
+            writer.write(record)
 
 
 def join(
     frames: List['partition.PartitionedFrame'],
     destination: str,
+    output_format: str = datawelder.readwrite.PICKLE,
+    fmtparams: Optional[Dict[str, str]] = None,
     selected_fields: Optional[List[str]] = None,
     aliases: Optional[List[str]] = None,
-    writer_class: Any = 'datawelder.readwrite.PickleWriter',
     subs: Optional[int] = None,
 ) -> Any:
     #
@@ -178,11 +145,12 @@ def join(
         for partition_num, temp_path in enumerate(temp_paths):
             yield (
                 partition_num,
-                [f[partition_num] for f in frames],
+                [f.path for f in frames],
                 temp_path,
+                output_format,
+                fmtparams,
                 selected_fields,
                 aliases,
-                writer_class,
             )
 
     with tempfile.TemporaryDirectory(prefix='datawelder-') as temp_dir:
@@ -190,10 +158,10 @@ def join(
 
         if subs == 1:
             for args in generate_work(temp_paths):
-                _join_partitions_sorted(*args)
+                join_partitions(*args)
         else:
             pool = multiprocessing.Pool(subs)
-            pool.starmap(_join_partitions_sorted, generate_work(temp_paths))
+            pool.starmap(join_partitions, generate_work(temp_paths))
         datawelder.cat.cat(temp_paths, destination)
 
 
@@ -212,12 +180,12 @@ def _parse_select(query: str) -> Iterator[Tuple[int, str, str, str]]:
 
 def _select(
     dataframes: List['partition.PartitionedFrame'],
-    query: str
+    query: str,
 ) -> Tuple[List[str], List[str]]:
     parsed_query = list(_parse_select(query))
     _, _, selected_names, aliases = zip(*parsed_query)
 
-    field_names = join_field_names(dataframes)
+    field_names = _name_fields(dataframes)
     for field in selected_names:
         if field not in field_names:
             raise ValueError('expected %r to be one of %r' % (field, field_names))
@@ -233,8 +201,6 @@ def _select(
         ]
         if not fields_to_keep:
             raise ValueError('not keeping any fields from dataframe %d' % i)
-
-        df.select(fields_to_keep)
 
     return list(selected_names), list(aliases)
 
@@ -280,13 +246,13 @@ def main():
         selected_names = aliases = None
 
     fmtparams = datawelder.readwrite.parse_fmtparams(args.fmtparams)
-    writer_class = datawelder.readwrite.partial_writer(args.format, fmtparams)
     join(
         dataframes,
         args.destination,
-        selected_names,
-        aliases,
-        writer_class=writer_class,
+        args.format,
+        fmtparams=fmtparams,
+        selected_fields=selected_names,
+        aliases=aliases,
         subs=args.subs,
     )
 

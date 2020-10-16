@@ -1,6 +1,5 @@
 """Implements functions for reading and writing from/to files."""
 import csv
-import functools
 import json
 import logging
 import pickle
@@ -330,7 +329,15 @@ def open_reader(
     return cls(path, key, field_names, fmtparams, types)
 
 
-def partial_writer(fmt: str, fmtparams: Optional[Dict[str, str]] = None) -> Any:
+def open_writer(
+    path: str,
+    fmt: str,
+    partition_num: int,
+    field_indices: List[int],
+    field_names: List[str],
+    fmtparams: Optional[Dict[str, str]] = None,
+):
+
     cls: Type[AbstractWriter] = PickleWriter
     if fmt == PICKLE:
         cls = PickleWriter
@@ -341,4 +348,10 @@ def partial_writer(fmt: str, fmtparams: Optional[Dict[str, str]] = None) -> Any:
     else:
         assert False
 
-    return functools.partial(cls, fmtparams=fmtparams)
+    return cls(
+        path,
+        partition_num,
+        field_indices=field_indices,
+        field_names=field_names,
+        fmtparams=fmtparams,
+    )
