@@ -26,6 +26,7 @@ import os
 import os.path as P
 import pickle
 import resource
+import sys
 
 from typing import (
     Any,
@@ -108,7 +109,10 @@ def open_partitions(
     # and open a large number of partitions, things like SSL signing will
     # start failing mysteriously.
     #
-    with _update_soft_limit(num_partitions * 100):
+    # MacOS seems to be a bit stingy, so use more conservative limits.
+    #
+    soft_limit = num_partitions * (10 if sys.platform == 'darwin' else 100)
+    with _update_soft_limit(soft_limit):
         streams = [_open(path, mode=mode) for path in partition_paths]
 
         yield streams
@@ -287,17 +291,24 @@ def partition(
     partition_format = '%04d.pickle.gz'
     abs_partition_format = P.join(destination_path, partition_format)
 
+    wrote = 0
     with open_partitions(abs_partition_format, num_partitions, mode='wb') as partitions:
         for i, record in enumerate(reader, 1):
             if i % 1000000 == 0:
                 _LOGGER.info('processed record #%d', i)
-            key = record[reader.key_index]
+
+            try:
+                key = record[reader.key_index]
+            except IndexError:
+                _LOGGER.error('bad record on line %r: %r, skipping', i, record)
+                continue
 
             assert key is not None
             partition_index = key_function(key, num_partitions)
             pickle.dump(record, partitions[partition_index])
+            wrote += 1
 
-    _LOGGER.info('wrote %d records to %d partitions', i, num_partitions)
+    _LOGGER.info('wrote %d records to %d partitions', wrote, num_partitions)
 
     #
     # NB This can happen only after the first record has been read, because
@@ -307,7 +318,7 @@ def partition(
     config = {
         'field_names': reader.field_names,
         'key_index': reader.key_index,
-        'source_path': reader.path,
+        'source_path': str(reader.path),  # FIXME:
         'num_partitions': num_partitions,
         'partition_format': partition_format,
         'config_format': 1,
@@ -318,7 +329,7 @@ def partition(
 
     #
     # N.B. Parallelize the sorting?  Need to be careful of EOM because the
-    # sort loads each partition in memory in its entirety.
+    # sort loads each partition into memory in its entirety.
     #
     frame = PartitionedFrame(destination_path)
     for part in frame:
