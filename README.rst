@@ -38,7 +38,7 @@ We can join these two dataframes as follows:
     $ python -m datawelder.partition sampledata/currencies.csv partitions/currencies 5
     $ python -m datawelder.join out.csv partitions/names partitions/currencies --format csv
     $ grep AND out.csv
-    AND,Principality of Andorra,Euro
+    AND,Principality of Andorra,AND,Euro
 
 Tweaking
 --------
@@ -62,7 +62,7 @@ Similarly, for output:
 
     $ python -m datawelder.join out.csv partitions/names partitions/currencies --format csv --fmtparams delimiter=;
     $ grep AND out.csv
-    AND;Principality of Andorra;Euro
+    AND;Principality of Andorra;AND;Euro
 
 Other formats work transparently:
 
@@ -77,27 +77,20 @@ You can merge them with any other partitioned dataset with ease:
 
     $ python -m datawelder.join out.json partitions/names partitions/currencies --format json --subs 1
     $ head -n 5 out.json
-    {"0.iso3": "AGO", "0.name": "Republic of Angola", "1.currency": "Kwanza"}
-    {"0.iso3": "AND", "0.name": "Principality of Andorra", "1.currency": "Euro"}
-    {"0.iso3": "ARM", "0.name": "Republic of Armenia", "1.currency": "Dram"}
-    {"0.iso3": "ATF", "0.name": "French Southern and Antarctic Lands", "1.currency": "Euro"}
-    {"0.iso3": "AZE", "0.name": "Republic of Azerbaijan", "1.currency": "Manat"}
+    {"iso3": "AGO", "name": "Republic of Angola", "iso3_1": "AGO", "currency": "Kwanza"}
+    {"iso3": "AND", "name": "Principality of Andorra", "iso3_1": "AND", "currency": "Euro"}
+    {"iso3": "ARM", "name": "Republic of Armenia", "iso3_1": "ARM", "currency": "Dram"}
+    {"iso3": "ATF", "name": "French Southern and Antarctic Lands", "iso3_1": "ATF", "currency": "Euro"}
+    {"iso3": "AZE", "name": "Republic of Azerbaijan", "iso3_1": "AZE", "currency": "Manat"}
 
 
 You can also select a subset of fields to keep (similar to SQL SELECT):
 
 .. code:: bash
 
-    $ python -m datawelder.join out.csv partitions/names partitions/currencies --format csv --select 0.name,1.currency --subs 1
-    $ grep -i andorra out.csv
-    Principality of Andorra,Euro
-
-``datawelder`` will automatically name the fields for you:
-
-.. code:: bash
-
+    $ python -m datawelder.join out.csv partitions/names partitions/currencies --format csv --select name,currency --subs 1
     $ head -n 5 out.csv
-    0.name,1.currency
+    name,currency
     Republic of Angola,Kwanza
     Principality of Andorra,Euro
     Republic of Armenia,Dram
@@ -110,9 +103,9 @@ You can also rename the selected fields as desired (again, similar to SQL SELECT
 
 .. code:: bash
 
-    $ python -m datawelder.join out.csv partitions/names partitions/currencies --format csv --select '0.name as name, 1.currency as curr' --subs 1
+    $ python -m datawelder.join out.csv partitions/names partitions/currencies --format csv --select 'name as country_name, currency as curr' --subs 1
     $ head -n 5 out.csv
-    name,curr
+    country_name,curr
     Republic of Angola,Kwanza
     Principality of Andorra,Euro
     Republic of Armenia,Dram
