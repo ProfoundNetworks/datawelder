@@ -146,11 +146,6 @@ def join(
     subs: Optional[int] = None,
 ) -> Any:
     #
-    # NB. The following fails when writer_class is a partial
-    #
-    # assert issubclass(writer_class, AbstractWriter)
-
-    #
     # If the number of partitions is different, then joining is impossible.
     #
     num_partitions = frames[0].config['num_partitions']
