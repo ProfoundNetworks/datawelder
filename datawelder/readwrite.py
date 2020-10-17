@@ -88,6 +88,7 @@ class CsvReader(AbstractReader):
         else:
             self._fin = smart_open.open(self.path, 'r')
         self._reader = csv.reader(self._fin, **fmtparams)
+        self._linenum = 0
 
         if not self.field_names:
             self.field_names = next(self._reader)
@@ -98,12 +99,19 @@ class CsvReader(AbstractReader):
         return self
 
     def __next__(self):
-        record = next(self._reader)
-        #
-        # TODO:
-        # Check that the record has the expected length.
-        # (what to do if it doesn't?)
-        #
+        while True:
+            record = next(self._reader)
+            self._linenum += 1
+            if len(record) == len(self.field_names):
+                break
+            else:
+                _LOGGER.error(
+                    'bad record on line %d, contains %d fields but expected %d',
+                    self._linenum,
+                    len(record),
+                    len(self.field_names),
+                )
+
         if self.types:
             record = [t(column) for (t, column) in zip(self.types, record)]
         return tuple(record)
@@ -196,6 +204,9 @@ def parse_types(types: List[str]) -> Iterator[DataType]:
 
 
 def csv_fmtparams(fmtparams: Dict[str, str]) -> Dict[str, Any]:
+    if not fmtparams:
+        return {}
+
     #
     # https://docs.python.org/3/library/csv.html
     #
