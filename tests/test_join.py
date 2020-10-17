@@ -36,46 +36,45 @@ def test_parse_select_malformed():
         list(datawelder.join._parse_select('foo az fu, bar iz ba'))
 
 
-def test_select_simple():
+def test_scrub_fields_simple():
     headers = [['foo', 'bar'], ['baz', 'boz']]
-    query = 'foo, boz'
+    fields = [(0, 'foo', None), (1, 'boz', None)]
     expected = [(0, 0, 'foo'), (1, 1, 'boz')]
-    actual = datawelder.join._select(headers, query)
+    actual = datawelder.join._scrub_fields(headers, fields)
     assert actual == expected
 
 
-def test_select_aliased():
+def test_scrub_fields_auto():
     headers = [['foo', 'bar'], ['baz', 'boz']]
-    query = 'foo as FOO, boz as BoZ'
-    expected = [(0, 0, 'FOO'), (1, 1, 'BoZ')]
-    actual = datawelder.join._select(headers, query)
+    expected = [(0, 0, 'foo'), (0, 1, 'bar'), (1, 0, 'baz'), (1, 1, 'boz')]
+    actual = datawelder.join._scrub_fields(headers, None)
     assert actual == expected
 
 
-def test_select_ambiguous():
+def test_scrub_fields_ambiguous():
     headers = [['foo', 'bar'], ['baz', 'foo']]
-    query = 'foo as FOO, baz as BAZ'
+    fields = [(None, 'foo', 'FOO'), (None, 'baz', 'BAZ')]
     with pytest.raises(ValueError):
-        datawelder.join._select(headers, query)
+        datawelder.join._scrub_fields(headers, fields)
 
 
-def test_select_unknown():
+def test_scrub_fields_unknown():
     headers = [['foo', 'bar'], ['baz', 'foo']]
-    query = 'foo as FOO, biz'
+    fields = [(0, 'foo', 'FOO'), (1, 'buzz', 'BAZ')]
     with pytest.raises(ValueError):
-        datawelder.join._select(headers, query)
+        datawelder.join._scrub_fields(headers, fields)
 
 
 def test_unique_aliases():
     headers = [['foo', 'bar'], ['baz', 'foo']]
-    query = '0.foo as FOO, 1.foo as FOO'
+    fields = [(0, 'foo', 'foo'), (1, 'baz', 'foo')]
     with pytest.raises(ValueError):
-        datawelder.join._select(headers, query)
+        datawelder.join._scrub_fields(headers, fields)
 
 
 def test_auto_alias():
     headers = [['foo', 'bar'], ['baz', 'foo']]
-    query = '0.foo, 1.foo'
+    fields = [(0, 'foo', None), (1, 'foo', None)]
     expected = [(0, 0, 'foo'), (1, 1, 'foo_1')]
-    actual = datawelder.join._select(headers, query)
+    actual = datawelder.join._scrub_fields(headers, fields)
     assert actual == expected

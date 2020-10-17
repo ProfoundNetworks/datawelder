@@ -29,7 +29,7 @@ import datawelder.cat
 import datawelder.readwrite
 import datawelder.partition
 
-Field = Tuple[int, int, Optional[str]]
+Field = Tuple[int, int, str]
 """A field definition for a join operation.
 
 The first element is an integer that indicates the ordinal number of the
@@ -45,19 +45,6 @@ if TYPE_CHECKING:
     from . import partition
 
 _LOGGER = logging.getLogger(__name__)
-
-
-def _name_fields(partitions_or_frames: List[Any]) -> List[str]:
-    """Assign names to fields in preparation for a join."""
-    #
-    # We use a numeric suffix instead of a numeric prefix because in many
-    # contexts (e.g. JSON), names may not start with a number.
-    #
-    leftpart, others = partitions_or_frames[0], partitions_or_frames[1:]
-    field_names = ['%s_0' % f for f in leftpart.field_names]
-    for i, part in enumerate(others, 1):
-        field_names.extend(['%s_%d' % (n, i) for n in part.field_names])
-    return field_names
 
 
 def _join_partitions(partitions: List[datawelder.partition.Partition]) -> Iterator[Tuple]:
@@ -91,27 +78,21 @@ def _join_partitions(partitions: List[datawelder.partition.Partition]) -> Iterat
 
 
 def _calculate_indices(
-    frames: List['partition.PartitionedFrame'],
-    selected_fields: Optional[List[Field]] = None,
+    frame_headers: List[List[str]],
+    selected_fields: List[Field],
 ) -> Tuple[List[int], List[str]]:
     joined_fields: List[Tuple[int, int]] = []
-    default_names: List[str] = []
-    for framenum, frame in enumerate(frames):
-        for fieldnum, fieldname in enumerate(frame.field_names):
+    for framenum, header in enumerate(frame_headers):
+        for fieldnum, fieldname in enumerate(header):
             joined_fields.append((framenum, fieldnum))
-            default_names.append('%s_%d' % (fieldname, framenum))
-
-    default_indices = [i for (i, _) in enumerate(joined_fields)]
-    if selected_fields is None:
-        return default_indices, default_names
 
     indices: List[int] = []
     names: List[str] = []
 
-    for (framenum, fieldnum, opt_fieldname) in selected_fields:
+    for (framenum, fieldnum, alias) in selected_fields:
         idx = joined_fields.index((framenum, fieldnum))
         indices.append(idx)
-        names.append(opt_fieldname if opt_fieldname else default_names[idx])
+        names.append(alias)
 
     return indices, names
 
@@ -131,7 +112,12 @@ def join_partitions(
         output_path = sys.stdout.buffer  # type: ignore
 
     frames = [datawelder.partition.PartitionedFrame(fp) for fp in frame_paths]
-    field_indices, field_names = _calculate_indices(frames, fields)
+    headers = [f.field_names for f in frames]
+
+    if fields is None:
+        fields = _scrub_fields(headers, None)
+
+    field_indices, field_names = _calculate_indices(headers, fields)
 
     partitions = [frame[partition_num] for frame in frames]
     with datawelder.readwrite.open_writer(
@@ -215,15 +201,30 @@ def _parse_select(query: str) -> Iterator[Tuple]:
             raise ValueError('malformed SELECT query: %r' % query)
 
 
-def _select(frame_headers: List[List[str]], query: str) -> List[Field]:
+def _scrub_fields(
+    frame_headers: List[List[str]],
+    dirty_fields: Optional[List[Tuple]],
+) -> List[Field]:
     lut = collections.defaultdict(list)
     for framenum, header in enumerate(frame_headers):
         for fieldname in header:
             lut[fieldname].append(framenum)
 
+    #
+    # Select all the fields.
+    #
+    if dirty_fields is None:
+        dirty_fields = []
+        for framenum, header in enumerate(frame_headers):
+            for fieldname in header:
+                dirty_fields.append((framenum, fieldname, None))
+
+    assert dirty_fields
+
     selected: List[Field] = []
     used_aliases = set()
-    for framenum, fieldname, alias in _parse_select(query):
+
+    for framenum, fieldname, alias in dirty_fields:
         if fieldname not in lut:
             raise ValueError('expected %r to be one of %r' % (fieldname, sorted(lut)))
 
@@ -289,11 +290,14 @@ def main():
     logging.basicConfig(level=args.loglevel)
 
     dataframes = [datawelder.partition.PartitionedFrame(x) for x in args.sources]
+    headers = [df.field_names for df in dataframes]
 
     fields = None
     if args.select:
-        headers = [df.field_names for df in dataframes]
-        fields = _select(headers, args.select)
+        dirty_fields = list(_parse_select(args.select))
+        fields = _scrub_fields(headers, dirty_fields)
+    else:
+        fields = _scrub_fields(headers, None)
 
     fmtparams = datawelder.readwrite.parse_fmtparams(args.fmtparams)
     join(
