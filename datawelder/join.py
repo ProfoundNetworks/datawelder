@@ -62,13 +62,20 @@ def _join_partitions(partitions: List[datawelder.partition.Partition]) -> Iterat
     leftpart = partitions.pop(0)
     peek = [getnext(p) for p in partitions]
     defaults = [mkdefault(p) for p in partitions]
+    leftkey = None
 
     for leftrecord in leftpart:
+        if leftkey is not None and leftkey > leftrecord[leftpart.key_index]:
+            raise RuntimeError('%r is not properly sorted' % leftpart)
         leftkey = leftrecord[leftpart.key_index]
+
         joinedrecord = list(leftrecord)
         for i, rightpart in enumerate(partitions):
             while peek[i] is not None and peek[i][rightpart.key_index] < leftkey:
-                peek[i] = getnext(rightpart)
+                nextrecord = getnext(rightpart)
+                if nextrecord[rightpart.key_index] < peek[i][rightpart.key_index]:
+                    raise RuntimeError('%r is not properly sorted' % rightpart)
+                peek[i] = nextrecord
 
             if peek[i] is None or peek[i][rightpart.key_index] != leftkey:
                 joinedrecord.extend(defaults[i])
@@ -81,21 +88,17 @@ def _join_partitions(partitions: List[datawelder.partition.Partition]) -> Iterat
 def _calculate_indices(
     frame_headers: List[List[str]],
     selected_fields: List[Field],
-) -> Tuple[List[int], List[str]]:
+) -> List[int]:
+    """Calculate the required indices into the joined record."""
     joined_fields: List[Tuple[int, int]] = []
     for framenum, header in enumerate(frame_headers):
         for fieldnum, fieldname in enumerate(header):
             joined_fields.append((framenum, fieldnum))
-
-    indices: List[int] = []
-    names: List[str] = []
-
-    for (framenum, fieldnum, alias) in selected_fields:
-        idx = joined_fields.index((framenum, fieldnum))
-        indices.append(idx)
-        names.append(alias)
-
-    return indices, names
+    indices = [
+        joined_fields.index((framenum, fieldnum))
+        for (framenum, fieldnum, unused_alias) in selected_fields
+    ]
+    return indices
 
 
 def join_partitions(
@@ -118,7 +121,8 @@ def join_partitions(
     if fields is None:
         fields = _scrub_fields(headers, None)
 
-    field_indices, field_names = _calculate_indices(headers, fields)
+    field_indices = _calculate_indices(headers, fields)
+    field_names = [alias for (unused_framenum, unused_fieldnum, alias) in fields]
 
     partitions = [frame[partition_num] for frame in frames]
     with datawelder.readwrite.open_writer(

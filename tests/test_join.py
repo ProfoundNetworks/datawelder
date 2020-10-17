@@ -136,3 +136,34 @@ def test_join_partitions_missing_right():
     ]
     actual = list(datawelder.join._join_partitions([left, right]))
     assert actual == expected
+
+
+def test_join_partitions_unsorted_left():
+    left = Partition(('iso', 'name'), [('RU', 'Russia'), ('AU', 'Australia')])
+    right = Partition(('iso3', 'currency'), [('AU', 'Dollar'), ('RU', 'Rouble')])
+    with pytest.raises(RuntimeError):
+        list(datawelder.join._join_partitions([left, right]))
+
+
+@pytest.mark.skip('not sure how to test this particular edge case')
+def test_join_partitions_unsorted_right():
+    left = Partition(('iso', 'name'), [('AU', 'Australia'), ('RU', 'Russia')])
+    right = Partition(('iso3', 'currency'), [('RU', 'Rouble'), ('AU', 'Dollar')])
+    with pytest.raises(RuntimeError):
+        list(datawelder.join._join_partitions([left, right]))
+
+
+def test_calculate_indices():
+    headers = [['iso', 'name'], ['iso', 'currency']]
+    fields = [(0, 0, 'iso'), (0, 1, 'name'), (1, 0, 'iso_1'), (1, 1, 'currency')]
+    expected = [0, 1, 2, 3]
+    actual = datawelder.join._calculate_indices(headers, fields)
+    assert actual == expected
+
+
+def test_calculate_indices_jumbled():
+    headers = [['iso', 'name'], ['iso', 'currency']]
+    fields = [(0, 0, 'iso'), (1, 1, 'currency'), (0, 0, 'ISO'), (0, 1, 'name')]
+    expected = [0, 3, 0, 1]
+    actual = datawelder.join._calculate_indices(headers, fields)
+    assert actual == expected
