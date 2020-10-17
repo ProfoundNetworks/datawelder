@@ -263,7 +263,7 @@ def main():
 
     parser = argparse.ArgumentParser(description='Join partitioned dataframes together')
     parser.add_argument('destination', help='Where to save the result of the join')
-    parser.add_argument('sources', nargs='+', help='Which partitioned dataframes (subdirectories) to join')
+    parser.add_argument('sources', nargs='+', help='Which partitioned dataframes to join')
     parser.add_argument(
         '--format',
         default=datawelder.readwrite.PICKLE,
