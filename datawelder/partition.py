@@ -163,11 +163,10 @@ class PartitionedFrame:
         names = list(self.field_names)
         if self.key_name not in names:
             names.insert(0, self.key_name)
-        indices = [self.field_names.index(f) for f in names]
         keyindex = names.index(self.key_name)
 
         partition_path = P.join(self.path, self.config['partition_format'] % partition_number)
-        return Partition(partition_path, indices, names, keyindex)
+        return Partition(partition_path, names, keyindex)
 
     @property
     def field_names(self) -> List[str]:
@@ -192,7 +191,6 @@ class Partition:
     def __init__(
         self,
         path: str,
-        field_indices: List[int],
         field_names: List[str],
         key_index: int,
     ) -> None:
@@ -202,17 +200,14 @@ class Partition:
         an unnamed tuple.
 
         :param path: The path to the pickle file.
-        :param field_indices: The indices of the fields to extract from the tuple.
-        :param field_names: The names of the extracted fields.
+        :param field_names: The names of the contained fields.
         :param key_index: The index of the key.
         """
-        assert len(field_names) == len(field_indices)
-
         self.path = path
-        self.field_indices = field_indices
         self.field_names = field_names
         self.key_index = key_index
 
+        self._num_fields = len(self.field_names)
         self._fin = None
 
     def __iter__(self):
@@ -225,12 +220,19 @@ class Partition:
         if self._fin is None:
             self._fin = smart_open.open(self.path, 'rb')
 
-        try:
-            record = pickle.load(self._fin)
-        except EOFError:
-            raise StopIteration
-        else:
-            return [record[i] for i in self.field_indices]
+        while True:
+            try:
+                record = pickle.load(self._fin)
+            except EOFError:
+                raise StopIteration
+            else:
+                if len(record) != self._num_fields:
+                    #
+                    # FIXME: Malformed record!  Prevent these from appearing
+                    # in the partition in the first place.
+                    #
+                    continue
+                return record
 
 
 def sort_partition(path: str, key_index: int) -> None:

@@ -99,6 +99,11 @@ class CsvReader(AbstractReader):
 
     def __next__(self):
         record = next(self._reader)
+        #
+        # TODO:
+        # Check that the record has the expected length.
+        # (what to do if it doesn't?)
+        #
         if self.types:
             record = [t(column) for (t, column) in zip(self.types, record)]
         return tuple(record)
@@ -217,7 +222,7 @@ def csv_fmtparams(fmtparams: Dict[str, str]) -> Dict[str, Any]:
 class AbstractWriter:
     def __init__(
         self,
-        path: str,
+        path: Optional[str],
         partition_num: int,
         field_indices: List[int],
         field_names: List[str],
@@ -330,7 +335,7 @@ def open_reader(
 
 
 def open_writer(
-    path: str,
+    path: Optional[str],
     fmt: str,
     partition_num: int,
     field_indices: List[int],
