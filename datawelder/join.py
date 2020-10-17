@@ -48,6 +48,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def _join_partitions(partitions: List[datawelder.partition.Partition]) -> Iterator[Tuple]:
+    """Join partitions assuming that they are sorted by the partition key."""
 
     def mkdefault(p):
         return [None for _ in p.field_names]
@@ -69,7 +70,7 @@ def _join_partitions(partitions: List[datawelder.partition.Partition]) -> Iterat
             while peek[i] is not None and peek[i][rightpart.key_index] < leftkey:
                 peek[i] = getnext(rightpart)
 
-            if peek[i] is None:
+            if peek[i] is None or peek[i][rightpart.key_index] != leftkey:
                 joinedrecord.extend(defaults[i])
             else:
                 joinedrecord.extend(peek[i])
