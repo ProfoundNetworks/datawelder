@@ -24,7 +24,6 @@ import hashlib
 import logging
 import os
 import os.path as P
-import pickle
 import resource
 import sys
 
@@ -196,10 +195,10 @@ class Partition:
     ) -> None:
         """Initialize a new partition.
 
-        The partition stores records in a pickle file, where a record is
+        The partition stores records in a JSON file, where a record is
         an unnamed tuple.
 
-        :param path: The path to the pickle file.
+        :param path: The path to the JSON file.
         :param field_names: The names of the contained fields.
         :param key_index: The index of the key.
         """
@@ -222,7 +221,7 @@ class Partition:
 
         while True:
             try:
-                record = pickle.load(self._fin)
+                record = datawelder.readwrite.load(self._fin)
             except EOFError:
                 raise StopIteration
             else:
@@ -252,7 +251,7 @@ def sort_partition(path: str, key_index: int) -> None:
         with smart_open.open(path, 'rb') as fin:
             while True:
                 try:
-                    yield pickle.load(fin)
+                    yield datawelder.readwrite.load(fin)
                 except EOFError:
                     break
 
@@ -260,7 +259,7 @@ def sort_partition(path: str, key_index: int) -> None:
 
     with smart_open.open(path, 'wb') as fout:
         for r in records:
-            pickle.dump(r, fout)
+            datawelder.readwrite.dump(r, fout)
 
 
 def partition(
@@ -275,7 +274,7 @@ def partition(
     if not destination_path.startswith('s3://'):
         os.makedirs(destination_path, exist_ok=True)
 
-    partition_format = '%04d.pickle.gz'
+    partition_format = '%04d.json.gz'
     abs_partition_format = P.join(destination_path, partition_format)
 
     wrote = 0
@@ -292,7 +291,7 @@ def partition(
 
             assert key is not None
             partition_index = key_function(key, num_partitions)
-            pickle.dump(record, partitions[partition_index])
+            datawelder.readwrite.dump(record, partitions[partition_index])
             wrote += 1
 
     _LOGGER.info('wrote %d records to %d partitions', wrote, num_partitions)

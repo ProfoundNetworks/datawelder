@@ -11,6 +11,7 @@ from typing import (
     Any,
     Callable,
     Dict,
+    IO,
     Iterator,
     List,
     Optional,
@@ -144,6 +145,32 @@ class JsonReader(AbstractReader):
         #
         record_tuple = tuple([record_dict.get(f) for f in self.field_names])
         return record_tuple
+
+
+class DenseJsonReader(JsonReader):
+    def __next__(self):
+        line = next(self._fin)
+        rlist = json.loads(line)
+
+        if not self.field_names:
+            self.field_names = ['f%d' % i for i, unused in enumerate(rlist)]
+
+        if len(rlist) != len(self.field_names):
+            raise RuntimeError(
+                'malformed record, %d != %d' % (len(rlist), len(self.field_names))
+            )
+        return rlist
+
+
+def load(stream: IO[bytes]) -> List[Any]:
+    line = stream.readline()
+    if not line:
+        raise EOFError
+    return json.loads(line)
+
+
+def dump(record: List[Any], stream: IO[bytes]) -> None:
+    stream.write(json.dumps(record).encode(ENCODING) + b'\n')
 
 
 def parse_fmtparams(params: List[str]) -> Dict[str, str]:
@@ -291,6 +318,15 @@ class JsonWriter(AbstractWriter):
             for fieldindex, fieldname in self._mapping
         }
         self._fout.write(json.dumps(record_dict).encode(ENCODING))
+        self._fout.write(b'\n')
+
+
+class DenseJsonWriter(AbstractWriter):
+    """Writes each record as a JSON list, one list per line."""
+
+    def write(self, record):
+        rlist = [record[fieldindex] for fieldindex in self._field_indices]
+        self._fout.write(json.dumps(rlist).encode(ENCODING))
         self._fout.write(b'\n')
 
 
