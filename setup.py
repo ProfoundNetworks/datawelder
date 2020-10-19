@@ -46,4 +46,7 @@ setuptools.setup(
         'Programming Language :: Python :: 3.8',
         'Topic :: System :: Distributed Computing',
     ],
+    extras_require={
+        'test': ['pytest'],
+    }
 )
