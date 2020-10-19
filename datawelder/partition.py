@@ -38,11 +38,9 @@ from typing import (
 )
 
 import smart_open  # type: ignore
-import smart_open.s3  # type: ignore
 import yaml
 
 import datawelder.readwrite
-import datawelder.s3
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -70,6 +68,7 @@ def _update_soft_limit(soft_limit: int, limit_type: int = resource.RLIMIT_NOFILE
 
 def _open(path: str, mode: str) -> IO[bytes]:
     if mode == 'wb' and path.startswith('s3://'):
+        import datawelder.s3
         #
         # The default S3 writers in smart_open are too memory-hungry, so use
         # a custom implementation here.
