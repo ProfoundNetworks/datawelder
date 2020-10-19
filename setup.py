@@ -47,6 +47,6 @@ setuptools.setup(
         'Topic :: System :: Distributed Computing',
     ],
     extras_require={
-        'test': ['pytest'],
+        'test': ['pytest', 'pytest-cov'],
     }
 )
