@@ -1,6 +1,7 @@
 """doctest-like functionality for README.rst"""
 import shlex
 import subprocess
+import sys
 
 
 def g():
@@ -24,6 +25,7 @@ def g():
             yield command, '\n'.join(expected_output)
 
 
+returncode = 0
 for (command, expected_output) in g():
     print(command.strip())
 
@@ -34,6 +36,7 @@ for (command, expected_output) in g():
     if stdout == expected_output:
         print('OK')
     else:
+        returncode += 1
         print('NG')
         print('>>>>')
         print(expected_output)
@@ -41,3 +44,5 @@ for (command, expected_output) in g():
         print(stdout)
         print('<<<<')
         print()
+
+sys.exit(returncode)

@@ -28,15 +28,6 @@ jobs:
     - uses: actions/setup-python@v2
       with:
         python-version: "3.8.x"
-    - name: set Python version
-      run: echo "::set-env name=PY::$(python -c "import sys; print('-'.join(str(v) for v in sys.version_info[:3]))")"
-    - name: Cache dependencies
-      uses: actions/cache@v2
-      with:
-        path: ./venv
-        key: ${{ runner.os }}-dbi2-${{ env.PY }}-${{ hashFiles('**/requirements.txt') }}
-        restore-keys: |
-          ${{ runner.os }}-dbi2-${{ env.PY }}
     - name: install dependencies
       run: |
         python -m venv venv
@@ -46,3 +37,22 @@ jobs:
       run: |
         . venv/bin/activate
         pytest datawelder -n 3 -x --showlocals --cov=datawelder --cov-report=xml --dist loadfile
+
+  doctest:
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    needs: [linters,unit_tests]
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/setup-python@v2
+      with:
+        python-version: "3.8.x"
+    - name: install dependencies
+      run: |
+        python -m venv venv
+        . venv/bin/activate
+        pip install -e .[test]
+    - name: run readme doctest
+      run: |
+        . venv/bin/activate
+        python readme_doctest.py
