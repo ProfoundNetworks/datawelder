@@ -38,6 +38,7 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-dbi2-${{ env.PY }}
     - name: install dependencies
+      run: |
         python -m venv venv
         . venv/bin/activate
         pip install -e .[test]
