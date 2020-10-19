@@ -36,7 +36,7 @@ jobs:
     - name: run DataWelder unit tests
       run: |
         . venv/bin/activate
-        pytest datawelder -x --showlocals --cov=datawelder --cov-report=xml --dist loadfile
+        pytest datawelder -x --showlocals --cov=datawelder --cov-report=xml
 
   doctest:
     timeout-minutes: 10
