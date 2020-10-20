@@ -54,7 +54,7 @@ def _join_partitions(partitions: List[datawelder.partition.Partition]) -> Iterat
         return [None for _ in p.field_names]
 
     leftpart = partitions.pop(0)
-    rightrecord = [_getnext(p) for p in partitions]
+    rightrecord = None
     defaults = [mkdefault(p) for p in partitions]
     leftkey = None
 
@@ -62,6 +62,15 @@ def _join_partitions(partitions: List[datawelder.partition.Partition]) -> Iterat
         if leftkey is not None and leftkey > leftrecord[leftpart.key_index]:
             raise RuntimeError('%r is not properly sorted' % leftpart)
         leftkey = leftrecord[leftpart.key_index]
+
+        if rightrecord is None:
+            #
+            # Lazy init.  Do this here as opposed to before the for loop in
+            # order to avoid reading the partitions when leftpart has no
+            # records.  This rarely happens outside of the adhoc query
+            # use case.
+            #
+            rightrecord = [_getnext(p) for p in partitions]
 
         joinedrecord = list(leftrecord)
         for i, rightpart in enumerate(partitions):
@@ -82,6 +91,10 @@ def _getnext(partition):
 
 
 def _fastforward(partition, current, desired):
+    """Advance the partition to the record with the desired key value.
+
+    Assumes the partition is sorted by the key.
+    """
     nextrecord = current
     while current is not None and current[partition.key_index] < desired:
         nextrecord = _getnext(partition)
