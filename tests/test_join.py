@@ -98,6 +98,27 @@ def test_join_partitions():
     assert actual == expected
 
 
+def test_join_threeway():
+    name = datawelder.partition.MemoryPartition(
+        ('iso3', 'name'),
+        [('AU', 'Australia'), ('RU', 'Russia')],
+    )
+    currency = datawelder.partition.MemoryPartition(
+        ('iso', 'currency'),
+        [('AU', 'Dollar'), ('RU', 'Rouble')],
+    )
+    capital = datawelder.partition.MemoryPartition(
+        ('iso', 'capital'),
+        [('AU', 'Canberra'), ('RU', 'Moscow')],
+    )
+    expected = [
+        ('AU', 'Australia', 'AU', 'Dollar', 'AU', 'Canberra'),
+        ('RU', 'Russia', 'RU', 'Rouble', 'RU', 'Moscow'),
+    ]
+    actual = list(datawelder.join._join_partitions([name, currency, capital]))
+    assert actual == expected
+
+
 def test_join_partitions_missing_left():
     left = datawelder.partition.MemoryPartition(
         ('iso', 'name'),

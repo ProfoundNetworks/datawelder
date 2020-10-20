@@ -23,6 +23,7 @@ from typing import (
     Optional,
     Tuple,
     TYPE_CHECKING,
+    Union,
 )
 
 import datawelder.cat
@@ -49,18 +50,11 @@ _LOGGER = logging.getLogger(__name__)
 
 def _join_partitions(partitions: List[datawelder.partition.Partition]) -> Iterator[Tuple]:
     """Join partitions assuming that they are sorted by the partition key."""
-
     def mkdefault(p):
         return [None for _ in p.field_names]
 
-    def getnext(p):
-        try:
-            return next(p)
-        except StopIteration:
-            return None
-
     leftpart = partitions.pop(0)
-    peek = [getnext(p) for p in partitions]
+    rightrecord = [_getnext(p) for p in partitions]
     defaults = [mkdefault(p) for p in partitions]
     leftkey = None
 
@@ -71,18 +65,30 @@ def _join_partitions(partitions: List[datawelder.partition.Partition]) -> Iterat
 
         joinedrecord = list(leftrecord)
         for i, rightpart in enumerate(partitions):
-            while peek[i] is not None and peek[i][rightpart.key_index] < leftkey:
-                nextrecord = getnext(rightpart)
-                if nextrecord[rightpart.key_index] < peek[i][rightpart.key_index]:
-                    raise RuntimeError('%r is not properly sorted' % rightpart)
-                peek[i] = nextrecord
-
-            if peek[i] is None or peek[i][rightpart.key_index] != leftkey:
+            rightrecord[i] = _fastforward(rightpart, rightrecord[i], leftkey)
+            if rightrecord[i] is None or rightrecord[i][rightpart.key_index] != leftkey:
                 joinedrecord.extend(defaults[i])
             else:
-                joinedrecord.extend(peek[i])
+                joinedrecord.extend(rightrecord[i])
 
-            yield tuple(joinedrecord)
+        yield tuple(joinedrecord)
+
+
+def _getnext(partition):
+    try:
+        return next(partition)
+    except StopIteration:
+        return None
+
+
+def _fastforward(partition, current, desired):
+    nextrecord = current
+    while current is not None and current[partition.key_index] < desired:
+        nextrecord = _getnext(partition)
+        if nextrecord[partition.key_index] < current[partition.key_index]:
+            raise RuntimeError('%r is not properly sorted' % partition)
+        current = nextrecord
+    return nextrecord
 
 
 def _calculate_indices(
@@ -101,21 +107,30 @@ def _calculate_indices(
     return indices
 
 
-def join_partitions(
+def join_partition_num(
     partition_num: int,
-    frame_paths: List[str],
+    frame_paths: List[Union[str, datawelder.partition.PartitionedFrame]],
     output_path: Optional[str],
-    output_format: str = datawelder.readwrite.PICKLE,
+    output_format: str = datawelder.readwrite.JSON,
     fmtparams: Optional[Dict[str, str]] = None,
     fields: Optional[List[Field]] = None,
 ) -> None:
     if output_path is None:
         #
-        # NB. smart_open can handle this mess
+        # NB. smart_open accepts file paths _and_ file objects, so passing
+        # in standard output will work fine, with one exception: we have to
+        # prevent the writers from closing the stream (because other things,
+        # e.g. writers) may want to write to it afterward, and will run into
+        # a "write to closed file" error otherwise.
         #
         output_path = sys.stdout.buffer  # type: ignore
+        assert output_path
+        output_path.close = lambda: None
 
-    frames = [datawelder.partition.PartitionedFrame(fp) for fp in frame_paths]
+    frames = [
+        datawelder.partition.PartitionedFrame(fp) if isinstance(fp, str) else fp
+        for fp in frame_paths
+    ]
     headers = [f.field_names for f in frames]
 
     if fields is None:
@@ -172,10 +187,10 @@ def join(
 
         if subs == 1:
             for args in generate_work(temp_paths):
-                join_partitions(*args)
+                join_partition_num(*args)
         else:
             pool = multiprocessing.Pool(subs)
-            pool.starmap(join_partitions, generate_work(temp_paths))
+            pool.starmap(join_partition_num, generate_work(temp_paths))
         datawelder.cat.cat(temp_paths, destination)
 
 
