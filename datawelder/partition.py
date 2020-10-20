@@ -18,6 +18,7 @@ Each record will be a tuple.  You can convert it to a more helpful format::
     >>> record_dict = dict(zip(foo.field_names, record_tuple))
 """
 
+import collections
 import contextlib
 import gzip
 import hashlib
@@ -231,6 +232,81 @@ class Partition:
                     #
                     continue
                 return record
+
+
+class MemoryFrame(PartitionedFrame):
+    """A partitioned data frame that holds all of its data in memory.
+
+    Useful for ad-hoc work.
+    """
+    def __init__(
+        self,
+        fieldnames: List[str],
+        data: List[List],
+        numparts: int,
+        keyindex: int = 0,
+    ) -> None:
+        self.path = 'memory:///datawelder/memoryframe'
+        self._numparts = numparts
+        self._keyindex = keyindex
+
+        partitioned_data = collections.defaultdict(list)
+        numfields = len(fieldnames)
+        for d in data:
+            assert len(d) == numfields
+            partnum = datawelder.partition.calculate_key(d[keyindex], numparts)
+            partitioned_data[partnum].append(d)
+
+        self._parts = []
+        for partnum in range(numparts):
+            mempart = MemoryPartition(fieldnames, partitioned_data[partnum], keyindex)
+            self._parts.append(mempart)
+
+        #
+        # NB The parent class expects this dict to exist.
+        #
+        self.config = {
+            'field_names': fieldnames,
+            'key_index': keyindex,
+            'key_name': fieldnames[keyindex],
+            'num_partitions': numparts,
+            'partition_format': '%d.json.gz',
+        }
+
+    def __getitem__(self, key):
+        partnum = int(key)
+        if partnum >= len(self):
+            raise ValueError('key must be less than %d' % len(self))
+        return self._parts[partnum]
+
+    def __iter__(self):
+        return iter(self._parts)
+
+
+class MemoryPartition(Partition):
+    """A partition that holds all of its data in memory.
+
+    Useful for ad-hoc work.
+    """
+    def __init__(
+        self,
+        field_names: List[str],
+        data: List[Any],
+        key_index: int = 0,
+    ) -> None:
+        self.path = 'memory:///datawelder/memorypartition'
+        self.field_names = field_names
+        self.key_index = key_index
+
+        self._num_fields = len(self.field_names)
+        self._data = data
+        self._iter = iter(data)
+
+    def __iter__(self):
+        return self._iter
+
+    def __next__(self):
+        return next(self._iter)
 
 
 def sort_partition(path: str, key_index: int) -> None:

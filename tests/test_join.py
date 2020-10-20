@@ -1,5 +1,6 @@
 import pytest
 
+import datawelder.partition
 import datawelder.join
 
 
@@ -80,24 +81,15 @@ def test_auto_alias():
     assert actual == expected
 
 
-class Partition:
-    def __init__(self, field_names, data):
-        self.path = '/does/not/exist'
-        self.field_names = field_names
-        self.key_index = 0
-        self._data = data
-        self._iter = iter(self._data)
-
-    def __iter__(self):
-        return self._iter
-
-    def __next__(self):
-        return next(self._iter)
-
-
 def test_join_partitions():
-    left = Partition(('iso3', 'name'), [('AU', 'Australia'), ('RU', 'Russia')])
-    right = Partition(('iso', 'currency'), [('AU', 'Dollar'), ('RU', 'Rouble')])
+    left = datawelder.partition.MemoryPartition(
+        ('iso3', 'name'),
+        [('AU', 'Australia'), ('RU', 'Russia')],
+    )
+    right = datawelder.partition.MemoryPartition(
+        ('iso', 'currency'),
+        [('AU', 'Dollar'), ('RU', 'Rouble')],
+    )
     expected = [
         ('AU', 'Australia', 'AU', 'Dollar'),
         ('RU', 'Russia', 'RU', 'Rouble'),
@@ -107,11 +99,14 @@ def test_join_partitions():
 
 
 def test_join_partitions_missing_left():
-    left = Partition(
+    left = datawelder.partition.MemoryPartition(
         ('iso', 'name'),
         [('AU', 'Australia'), ('KP', 'Kraplakistan'), ('RU', 'Russia')],
     )
-    right = Partition(('iso3', 'currency'), [('AU', 'Dollar'), ('RU', 'Rouble')])
+    right = datawelder.partition.MemoryPartition(
+        ('iso3', 'currency'),
+        [('AU', 'Dollar'), ('RU', 'Rouble')],
+    )
     expected = [
         ('AU', 'Australia', 'AU', 'Dollar'),
         ('KP', 'Kraplakistan', None, None),
@@ -122,11 +117,11 @@ def test_join_partitions_missing_left():
 
 
 def test_join_partitions_missing_right():
-    left = Partition(
+    left = datawelder.partition.MemoryPartition(
         ('iso', 'name'),
         [('AU', 'Australia'), ('RU', 'Russia')],
     )
-    right = Partition(
+    right = datawelder.partition.MemoryPartition(
         ('iso3', 'currency'),
         [('AU', 'Dollar'), ('KPL', '???'), ('RU', 'Rouble')],
     )
@@ -139,16 +134,28 @@ def test_join_partitions_missing_right():
 
 
 def test_join_partitions_unsorted_left():
-    left = Partition(('iso', 'name'), [('RU', 'Russia'), ('AU', 'Australia')])
-    right = Partition(('iso3', 'currency'), [('AU', 'Dollar'), ('RU', 'Rouble')])
+    left = datawelder.partition.MemoryPartition(
+        ('iso', 'name'),
+        [('RU', 'Russia'), ('AU', 'Australia')],
+    )
+    right = datawelder.partition.MemoryPartition(
+        ('iso3', 'currency'),
+        [('AU', 'Dollar'), ('RU', 'Rouble')],
+    )
     with pytest.raises(RuntimeError):
         list(datawelder.join._join_partitions([left, right]))
 
 
 @pytest.mark.skip('not sure how to test this particular edge case')
 def test_join_partitions_unsorted_right():
-    left = Partition(('iso', 'name'), [('AU', 'Australia'), ('RU', 'Russia')])
-    right = Partition(('iso3', 'currency'), [('RU', 'Rouble'), ('AU', 'Dollar')])
+    left = datawelder.partition.MemoryPartition(
+        ('iso', 'name'),
+        [('AU', 'Australia'), ('RU', 'Russia')]
+    )
+    right = datawelder.partition.MemoryPartition(
+        ('iso3', 'currency'),
+        [('RU', 'Rouble'), ('AU', 'Dollar')],
+    )
     with pytest.raises(RuntimeError):
         list(datawelder.join._join_partitions([left, right]))
 
