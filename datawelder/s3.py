@@ -43,8 +43,9 @@ class LightweightWriter(io.BufferedIOBase):
         self._key: str = key
         self._min_part_size: int = min_part_size
 
-        prefix = 'datawelder-%s-' % os.path.splitext(key)[1]
-        self._buf: IO[bytes] = tempfile.NamedTemporaryFile(prefix=prefix)
+        unused_parent, filename = os.path.split(self._key)
+        name, extension = os.path.splitext(filename)
+        self._buf: IO[bytes] = tempfile.NamedTemporaryFile(prefix='datawelder-%s-' % name)
         self._mpid: Optional[str] = None
         self._etags: List[str] = []
         self._closed: bool = False

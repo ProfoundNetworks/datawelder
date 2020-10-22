@@ -83,6 +83,10 @@ class AbstractReader:
 
 class CsvReader(AbstractReader):
     def __enter__(self):
+        handle_header = None
+        if self.fmtparams:
+            handle_header = self.fmtparams.pop('header')
+
         fmtparams = csv_fmtparams(self.fmtparams)
         if self.path is None:
             self._fin = sys.stdin
@@ -91,17 +95,43 @@ class CsvReader(AbstractReader):
         self._reader = csv.reader(self._fin, **fmtparams)
         self._linenum = 0
 
-        if not self.field_names:
-            self.field_names = next(self._reader)
-            if isinstance(self._key, str):
-                self.key_index = self.field_names.index(self._key)
+        if handle_header == 'drop':
+            next(self._reader)
+        elif handle_header == 'none':
+            #
+            # Some CSV files don't have a header at all.  In this case, we will
+            # rely on lazy init inside the __enter__ function.
+            #
+            pass
+        else:
+            header = next(self._reader)
+            if self.field_names and self.field_names != header:
+                raise ValueError('header mismatch, %r != %r' % (header, self.field_names))
 
-        _LOGGER.info('partition key: %r', self.field_names[self.key_index])
+            self.field_names = header
+
+        if self.field_names and isinstance(self._key, str):
+            self.key_index = self.field_names.index(self._key)
+
         return self
 
     def __next__(self):
         while True:
             record = next(self._reader)
+
+            #
+            # If we don't know the field names at this stage, the best we
+            # can do is name them in a consistent way and hope that the user
+            # knows what they're doing.
+            #
+            if not self.field_names:
+                self.field_names = ['f%d' % i for i, unused in enumerate(record)]
+                if isinstance(self._key, str):
+                    self.key_index = self.field_names.index(self._key)
+
+            if self._linenum == 0:
+                _LOGGER.info('partition key: %r', self.field_names[self.key_index])
+
             self._linenum += 1
             if len(record) == len(self.field_names):
                 break
