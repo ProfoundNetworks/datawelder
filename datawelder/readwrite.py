@@ -85,7 +85,7 @@ class CsvReader(AbstractReader):
     def __enter__(self):
         handle_header = None
         if self.fmtparams:
-            handle_header = self.fmtparams.pop('header')
+            handle_header = self.fmtparams.pop('header', None)
 
         fmtparams = csv_fmtparams(self.fmtparams)
         if self.path is None:
@@ -279,11 +279,15 @@ def csv_fmtparams(fmtparams: Dict[str, str]) -> Dict[str, Any]:
     }
     scrubbed = {}
     for key, value in fmtparams.items():
-        t = types[key]
-        if t == bool:
-            scrubbed[key] = value.lower() == 'true'
+        try:
+            t = types[key]
+        except KeyError:
+            _LOGGER.error('ignoring unknown fmtparams key: %r', key)
         else:
-            scrubbed[key] = t(value)
+            if t == bool:
+                scrubbed[key] = value.lower() == 'true'
+            else:
+                scrubbed[key] = t(value)
     return scrubbed
 
 

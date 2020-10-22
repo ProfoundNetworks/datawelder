@@ -55,6 +55,16 @@ def test_read_csv_drop_header():
     assert reader.field_names == ['f0', 'f1']
 
 
+def test_read_csv_ignores_bad_fmtparams():
+    buf = io.BytesIO(b'iso,name\nAU,Australia')
+    expected = [('AU', 'Australia')]
+    fmtparams = {'foo': 'bar'}
+    with datawelder.readwrite.CsvReader(buf, fmtparams=fmtparams) as reader:
+        actual = list(reader)
+    assert actual == expected
+    assert reader.field_names == ['iso', 'name']
+
+
 def test_dump_and_load():
     buf = io.BytesIO()
     buf.close = lambda: None
