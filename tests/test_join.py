@@ -195,3 +195,30 @@ def test_calculate_indices_jumbled():
     expected = [0, 3, 0, 1]
     actual = datawelder.join._calculate_indices(headers, fields)
     assert actual == expected
+
+
+def test_fastforward_found():
+    part = datawelder.partition.MemoryPartition(
+        ('iso', 'name'),
+        [('AU', 'Australia'), ('RU', 'Russia')]
+    )
+    nextrecord = datawelder.join._fastforward(part, ('AU', 'Australia'), 'RU')
+    assert nextrecord is ('RU', 'Russia')
+
+
+def test_fastforward_missing():
+    part = datawelder.partition.MemoryPartition(
+        ('iso', 'name'),
+        [('AU', 'Australia'), ('RU', 'Russia')]
+    )
+    nextrecord = datawelder.join._fastforward(part, ('AU', 'Australia'), 'ZA')
+    assert nextrecord is None
+
+
+def test_fastforward_end_of_partition():
+    part = datawelder.partition.MemoryPartition(
+        ('iso', 'name'),
+        [('RU', 'Russia')]
+    )
+    nextrecord = datawelder.join._fastforward(part, ('JP', 'Japan'), 'ZA')
+    assert nextrecord is None

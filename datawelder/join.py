@@ -98,7 +98,7 @@ def _fastforward(partition, current, desired):
     nextrecord = current
     while current is not None and current[partition.key_index] < desired:
         nextrecord = _getnext(partition)
-        if nextrecord[partition.key_index] < current[partition.key_index]:
+        if nextrecord and nextrecord[partition.key_index] < current[partition.key_index]:
             raise RuntimeError('%r is not properly sorted' % partition)
         current = nextrecord
     return nextrecord
@@ -128,6 +128,19 @@ def join_partition_num(
     fmtparams: Optional[Dict[str, str]] = None,
     fields: Optional[List[Field]] = None,
 ) -> None:
+    """Join the ``partition_num`` th partition across all the dataframes.
+
+    :param partition_num: The number of the partition.
+    :param frame_paths: The paths to the dataframes.
+      May also be the dataframes themselves.
+    :param output_path: Where to write the output.
+    :param output_format: The desired output format.  Defaults to JSON.
+    :param fmtparams: Format-specific parameters.  Currently, for CSV only.
+    :param fields: Field definitions.
+      Determine which fields to output and what to name them.
+      If not specified, will output all fields using whatever their names are
+      in each respective dataframe.
+    """
     if output_path is None:
         #
         # NB. smart_open accepts file paths _and_ file objects, so passing
