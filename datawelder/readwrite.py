@@ -372,7 +372,7 @@ class CsvWriter(AbstractWriter):
 
     def __enter__(self):
         fmtparams = csv_fmtparams(self._fmtparams)
-        self._fout = smart_open.open(self._path, 'wt')
+        self._fout = smart_open.open(self._path, 'w')
         self._writer = csv.writer(self._fout, **fmtparams)
 
         if self._write_header and self._partition_num == 0:
