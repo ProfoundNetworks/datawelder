@@ -1,4 +1,6 @@
+import csv
 import io
+import tempfile
 
 import datawelder.readwrite
 
@@ -63,6 +65,36 @@ def test_read_csv_ignores_bad_fmtparams():
         actual = list(reader)
     assert actual == expected
     assert reader.field_names == ['iso', 'name']
+
+
+def test_scrub_delimiter():
+    fmtparams = {'quoting': csv.QUOTE_NONE, 'quotechar': ''}
+    with tempfile.NamedTemporaryFile() as temp:
+        with datawelder.readwrite.CsvWriter(
+            temp.name,
+            1,
+            [0, 1, 2],
+            ['f1', 'f2', 'f3'],
+            fmtparams,
+        ) as writer:
+            writer.write(['hello', 123, 'world, how you doin?'])
+
+        assert open(temp.name, 'rb').read() == b'hello,123,world  how you doin?\r\n'
+
+
+def test_scrub_delimiter_pipe():
+    fmtparams = {'quoting': csv.QUOTE_NONE, 'quotechar': '', 'delimiter': '|'}
+    with tempfile.NamedTemporaryFile() as temp:
+        with datawelder.readwrite.CsvWriter(
+            temp.name,
+            1,
+            [0, 1, 2],
+            ['f1', 'f2', 'f3'],
+            fmtparams,
+        ) as writer:
+            writer.write(['hello', 123, 'world| how you doin?'])
+
+        assert open(temp.name, 'rb').read() == b'hello|123|world  how you doin?\r\n'
 
 
 def test_dump_and_load():
