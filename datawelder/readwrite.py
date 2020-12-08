@@ -417,6 +417,7 @@ def open_reader(
     fmt: Optional[str] = None,
     fmtparams: Optional[Dict[str, str]] = None,
     types: Optional[List[DataType]] = None,
+    sotparams: Optional[Dict[str, Any]] = None,
 ) -> AbstractReader:
     if path is None and fmt is None:
         raise ValueError('must specify format when reading from stdin')
@@ -437,7 +438,14 @@ def open_reader(
     if fmt != CSV and types:
         raise ValueError('the types parameter is only supported when reading CSV')
 
-    return cls(path, key, field_names, fmtparams, types)
+    return cls(
+        path,
+        key,
+        field_names=field_names,
+        types=types,
+        fmtparams=fmtparams,
+        sotparams=sotparams,
+    )
 
 
 def open_writer(
@@ -447,6 +455,7 @@ def open_writer(
     field_indices: List[int],
     field_names: List[str],
     fmtparams: Optional[Dict[str, str]] = None,
+    sotparams: Optional[Dict[str, Any]] = None,
 ):
 
     cls: Type[AbstractWriter] = PickleWriter
@@ -465,4 +474,5 @@ def open_writer(
         field_indices=field_indices,
         field_names=field_names,
         fmtparams=fmtparams,
+        sotparams=sotparams,
     )
