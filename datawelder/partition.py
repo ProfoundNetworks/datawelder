@@ -67,10 +67,7 @@ def _update_soft_limit(soft_limit: int, limit_type: int = resource.RLIMIT_NOFILE
     resource.setrlimit(limit_type, (old_soft_limit, hard_limit))
 
 
-def _open(path: str, mode: str, sotparams: Optional[dict] = None) -> IO[bytes]:
-    if sotparams is None:
-        sotparams = {}
-
+def _open(path: str, mode: str) -> IO[bytes]:
     if mode == 'wb' and path.startswith('s3://'):
         import datawelder.s3
         #
@@ -78,17 +75,26 @@ def _open(path: str, mode: str, sotparams: Optional[dict] = None) -> IO[bytes]:
         # a custom implementation here.
         #
         uri = smart_open.parse_uri(path)
+
+        resource_kwargs = {}
+        try:
+            endpoint_url = os.environ['AWS_ENDPOINT_URL']
+        except KeyError:
+            pass
+        else:
+            resource_kwargs['endpoint_url'] = endpoint_url
+
         fileobj = datawelder.s3.LightweightWriter(
             uri.bucket_id,
             uri.key_id,
             min_part_size=datawelder.s3.MIN_MIN_PART_SIZE,
-            resource_kwargs=sotparams.get('resource_kwargs'),
+            resource_kwargs=resource_kwargs,
         )
         if path.endswith('.gz'):
             return gzip.GzipFile(fileobj=fileobj, mode=mode)  # type: ignore
         return fileobj  # type: ignore
 
-    return smart_open.open(path, mode, transport_params=sotparams)
+    return datawelder.readwrite.open(path, mode)
 
 
 @contextlib.contextmanager
@@ -96,14 +102,12 @@ def open_partitions(
     path_format: str,
     num_partitions: int,
     mode: str = "rt",
-    sotparams: Optional[dict] = None,
 ) -> Iterator[List]:
     """Open partitions based on the provided string pattern.
 
     :param path_format: The format to use when determining partition paths.
     :param num_partitions: The number of partitions to open.
     :param mode: The mode in which the partitions must be opened.
-    :param sotparams: smart_open transport parameters
     """
     _LOGGER.info("opening partitions: %r %r", path_format, mode)
 
@@ -119,7 +123,7 @@ def open_partitions(
     soft_limit = num_partitions * (10 if sys.platform == 'darwin' else 100)
     with _update_soft_limit(soft_limit):
         streams = [
-            _open(path, mode=mode, sotparams=sotparams)
+            _open(path, mode=mode)
             for path in partition_paths
         ]
         yield streams
@@ -143,7 +147,8 @@ class PartitionedFrame:
     def __init__(self, path: str) -> None:
         self.path = path
 
-        with smart_open.open(P.join(path, 'datawelder.yaml')) as fin:
+        yaml_path = P.join(path, 'datawelder.yaml')
+        with datawelder.readwrite.open(yaml_path) as fin:
             self.config = yaml.safe_load(fin)
 
         assert self.config['config_format'] == 1
@@ -225,7 +230,7 @@ class Partition:
         # FIXME: maybe optimize this later
         #
         if self._fin is None:
-            self._fin = smart_open.open(self.path, 'rb')
+            self._fin = datawelder.readwrite.open(self.path, 'rb')
 
         while True:
             try:
@@ -331,7 +336,7 @@ def sort_partition(path: str, key_index: int) -> None:
     # are already quite small (by design).
     #
     def g():
-        with smart_open.open(path, 'rb') as fin:
+        with datawelder.readwrite.open(path, 'rb') as fin:
             while True:
                 try:
                     yield datawelder.readwrite.load(fin)
@@ -340,7 +345,7 @@ def sort_partition(path: str, key_index: int) -> None:
 
     records = sorted(g(), key=lambda r: r[key_index])
 
-    with smart_open.open(path, 'wb') as fout:
+    with datawelder.readwrite.open(path, 'wb') as fout:
         for r in records:
             datawelder.readwrite.dump(r, fout)
 
@@ -351,7 +356,6 @@ def partition(
     num_partitions: int,
     field_names: Optional[List[str]] = None,
     key_function: Callable[[str, int], int] = calculate_key,
-    sotparams: Optional[dict] = None,
 ) -> 'PartitionedFrame':
     """Partition a data frame."""
 
@@ -366,7 +370,6 @@ def partition(
         abs_partition_format,
         num_partitions,
         mode='wb',
-        sotparams=sotparams,
     ) as partitions:
         for i, record in enumerate(reader, 1):
             if i % 1000000 == 0:
@@ -399,7 +402,8 @@ def partition(
         'config_format': 1,
     }
 
-    with smart_open.open(P.join(destination_path, 'datawelder.yaml'), 'w') as fout:
+    yaml_path = P.join(destination_path, 'datawelder.yaml')
+    with datawelder.readwrite.open(yaml_path, 'w') as fout:
         yaml.dump(config, fout)
 
     #

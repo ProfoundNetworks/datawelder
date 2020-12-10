@@ -154,7 +154,8 @@ def join_partition_num(
         output_path.close = lambda: None
 
     frames = [
-        datawelder.partition.PartitionedFrame(fp) if isinstance(fp, str) else fp
+        datawelder.partition.PartitionedFrame(fp)
+        if isinstance(fp, str) else fp
         for fp in frame_paths
     ]
     headers = [f.field_names for f in frames]

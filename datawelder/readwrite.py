@@ -2,10 +2,12 @@
 import csv
 import json
 import logging
+import os
 import pickle
 import sys
 
 import smart_open  # type: ignore
+import datawelder.readwrite
 
 from typing import (
     Any,
@@ -48,14 +50,12 @@ class AbstractReader:
         field_names: Optional[List[str]] = None,
         fmtparams: Optional[Dict[str, str]] = None,
         types: Optional[List[DataType]] = None,
-        sotparams: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.path = path
         self._key = key
         self.field_names = field_names
         self.fmtparams = fmtparams
         self.types = types
-        self._sotparams = sotparams
 
         if field_names and types and len(field_names) != len(types):
             raise ValueError('field_names and types must be of same length if specified')
@@ -68,7 +68,7 @@ class AbstractReader:
 
     def __enter__(self):
         if self.path is None:
-            self._fin = smart_open.open(self.path, 'r', transport_params=self._sotparams)
+            self._fin = datawelder.readwrite.open(self.path, 'r')
         else:
             self._fin = sys.stdin
         return self
@@ -93,7 +93,7 @@ class CsvReader(AbstractReader):
         if self.path is None:
             self._fin = sys.stdin
         else:
-            self._fin = smart_open.open(self.path, 'r', transport_params=self._sotparams)
+            self._fin = datawelder.readwrite.open(self.path, 'r')
         self._reader = csv.reader(self._fin, **fmtparams)
         self._linenum = 0
 
@@ -158,7 +158,7 @@ class JsonReader(AbstractReader):
         if self.path is None:
             self._fin = sys.stdin.buffer
         else:
-            self._fin = smart_open.open(self.path, 'rb', transport_params=self._sotparams)
+            self._fin = datawelder.readwrite.open(self.path, 'rb')
         return self
 
     def __next__(self):
@@ -301,7 +301,6 @@ class AbstractWriter:
         field_indices: List[int],
         field_names: List[str],
         fmtparams: Optional[Dict[str, str]] = None,
-        sotparams: Optional[Dict[str, Any]] = None,
     ) -> None:
         """
         :param path: Where to write to.
@@ -316,7 +315,6 @@ class AbstractWriter:
         self._partition_num = partition_num
         self._field_indices = field_indices
         self._field_names = field_names
-        self._sotparams = None
 
         if fmtparams:
             self._fmtparams = fmtparams
@@ -324,7 +322,7 @@ class AbstractWriter:
             self._fmtparams = {}
 
     def __enter__(self):
-        self._fout = smart_open.open(self._path, 'wb', transport_params=self._sotparams)
+        self._fout = datawelder.readwrite.open(self._path, 'wb')
         return self
 
     def __exit__(self, *exc):
@@ -381,7 +379,7 @@ class CsvWriter(AbstractWriter):
 
     def __enter__(self):
         fmtparams = csv_fmtparams(self._fmtparams)
-        self._fout = smart_open.open(self._path, 'w', transport_params=self._sotparams)
+        self._fout = datawelder.readwrite.open(self._path, 'w')
         self._writer = csv.writer(self._fout, **fmtparams)
 
         if self._write_header and self._partition_num == 0:
@@ -417,7 +415,6 @@ def open_reader(
     fmt: Optional[str] = None,
     fmtparams: Optional[Dict[str, str]] = None,
     types: Optional[List[DataType]] = None,
-    sotparams: Optional[Dict[str, Any]] = None,
 ) -> AbstractReader:
     if path is None and fmt is None:
         raise ValueError('must specify format when reading from stdin')
@@ -444,7 +441,6 @@ def open_reader(
         field_names=field_names,
         types=types,
         fmtparams=fmtparams,
-        sotparams=sotparams,
     )
 
 
@@ -455,7 +451,6 @@ def open_writer(
     field_indices: List[int],
     field_names: List[str],
     fmtparams: Optional[Dict[str, str]] = None,
-    sotparams: Optional[Dict[str, Any]] = None,
 ):
 
     cls: Type[AbstractWriter] = PickleWriter
@@ -474,5 +469,15 @@ def open_writer(
         field_indices=field_indices,
         field_names=field_names,
         fmtparams=fmtparams,
-        sotparams=sotparams,
     )
+
+
+def open(*args, **kwargs):
+    """Wraps smart open and injects the endpoint_url for work under localstack."""
+    try:
+        endpoint_url = os.environ['AWS_ENDPOINT_URL']
+    except KeyError:
+        tparams = None
+    else:
+        tparams = {'resource_kwargs': {'endpoint_url': endpoint_url}}
+    return smart_open.open(*args, transport_params=tparams, **kwargs)
