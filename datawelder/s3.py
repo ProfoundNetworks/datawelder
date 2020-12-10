@@ -36,6 +36,7 @@ class LightweightWriter(io.BufferedIOBase):
         bucket: str,
         key: str,
         min_part_size: int = DEFAULT_MIN_PART_SIZE,
+        resource_kwargs: Optional[dict] = None,
     ):
         assert min_part_size >= MIN_MIN_PART_SIZE
 
@@ -50,6 +51,10 @@ class LightweightWriter(io.BufferedIOBase):
         self._etags: List[str] = []
         self._closed: bool = False
         self._total_bytes: int = 0
+
+        if resource_kwargs is None:
+            resource_kwargs = {}
+        self._resource_kwargs = resource_kwargs
 
         #
         # This member is part of the io.BufferedIOBase interface.
@@ -73,7 +78,7 @@ class LightweightWriter(io.BufferedIOBase):
         assert self._total_bytes > 0
         assert self._mpid is not None
 
-        s3 = boto3.resource('s3')
+        s3 = boto3.resource('s3', **self._resource_kwargs)
         multipart_upload = s3.MultipartUpload(self._bucket, self._key, self._mpid)
         partinfo = {
             'Parts': [
@@ -139,7 +144,7 @@ class LightweightWriter(io.BufferedIOBase):
     # Internal methods.
     #
     def _upload_next_part(self):
-        s3 = boto3.resource('s3')
+        s3 = boto3.resource('s3', **self._resource_kwargs)
         if self._mpid:
             multipart_upload = s3.MultipartUpload(self._bucket, self._key, self._mpid)
             _LOGGER.debug('resuming multipart upload %r', multipart_upload.id)

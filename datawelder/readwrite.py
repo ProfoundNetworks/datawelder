@@ -466,7 +466,7 @@ def open_writer(
     elif fmt == CSV:
         cls = CsvWriter
     else:
-        assert False
+        assert False, 'unknown format: %r' % fmt
 
     return cls(
         path,
