@@ -1,3 +1,6 @@
+import boto3
+import moto
+
 import datawelder.partition
 
 
@@ -32,3 +35,17 @@ def test_memory_partition_iteration():
     part = datawelder.partition.MemoryPartition(('iso3', 'name'), expected)
     actual = list(part)
     assert actual == expected
+
+
+@moto.mock_s3
+def test_open_partitions():
+    s3 = boto3.resource('s3', region_name='us-east-1')
+    s3.Bucket('testbucket').create()
+    with datawelder.partition.open_partitions('s3://testbucket/%d', 3, 'wt') as parts:
+        print(0, file=parts[0])
+        print(1, file=parts[1])
+        print(2, file=parts[2])
+
+    assert s3.Object('testbucket', '0').get()['Body'].read() == b'0\n'
+    assert s3.Object('testbucket', '1').get()['Body'].read() == b'1\n'
+    assert s3.Object('testbucket', '2').get()['Body'].read() == b'2\n'

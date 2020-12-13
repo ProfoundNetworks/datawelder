@@ -69,7 +69,12 @@ def _update_soft_limit(soft_limit: int, limit_type: int = resource.RLIMIT_NOFILE
 
 def _open(path: str, mode: str) -> IO[bytes]:
     if mode == 'wb' and path.startswith('s3://'):
-        import datawelder.s3
+        #
+        # We can't do "import datawelder.s3" here because it causes an
+        # UnboundLocalError when we try to touch datawelder.readwrite at the
+        # end of the function on Py3.8.5.
+        #
+        from datawelder import s3
         #
         # The default S3 writers in smart_open are too memory-hungry, so use
         # a custom implementation here.
@@ -84,7 +89,7 @@ def _open(path: str, mode: str) -> IO[bytes]:
         else:
             resource_kwargs['endpoint_url'] = endpoint_url
 
-        fileobj = datawelder.s3.LightweightWriter(
+        fileobj = s3.LightweightWriter(
             uri.bucket_id,
             uri.key_id,
             min_part_size=datawelder.s3.MIN_MIN_PART_SIZE,
