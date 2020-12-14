@@ -1,5 +1,8 @@
+import os
+
 import boto3
 import moto
+import pytest
 
 import datawelder.partition
 
@@ -49,3 +52,18 @@ def test_open_partitions():
     assert s3.Object('testbucket', '0').get()['Body'].read() == b'0\n'
     assert s3.Object('testbucket', '1').get()['Body'].read() == b'1\n'
     assert s3.Object('testbucket', '2').get()['Body'].read() == b'2\n'
+
+
+@pytest.mark.skipif(not os.environ.get('AWS_ENDPOINT_URL'), reason='this test expects a working localstack')
+def test_open_partitions_localstack():
+    endpoint_url = os.environ.get('AWS_ENDPOINT_URL')
+    s3 = boto3.resource('s3', region_name='us-east-1', endpoint_url=endpoint_url)
+
+    with datawelder.partition.open_partitions('s3://mybucket/%d', 3, 'wt') as parts:
+        print(0, file=parts[0])
+        print(1, file=parts[1])
+        print(2, file=parts[2])
+
+    assert s3.Object('mybucket', '0').get()['Body'].read() == b'0\n'
+    assert s3.Object('mybucket', '1').get()['Body'].read() == b'1\n'
+    assert s3.Object('mybucket', '2').get()['Body'].read() == b'2\n'
