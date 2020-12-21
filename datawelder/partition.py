@@ -150,7 +150,7 @@ def calculate_key(key: str, num_partitions: int) -> int:
 
 
 class PartitionedFrame:
-    def __init__(self, path: str, sotparams: Optional[Dict[str, Any]]) -> None:
+    def __init__(self, path: str, sotparams: Optional[Dict[str, Any]] = None) -> None:
         self.path = path
         self.sotparams = sotparams
 
