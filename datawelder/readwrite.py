@@ -477,7 +477,18 @@ def open(*args, **kwargs):
     try:
         endpoint_url = os.environ['AWS_ENDPOINT_URL']
     except KeyError:
-        tparams = None
+        pass
     else:
-        tparams = {'resource_kwargs': {'endpoint_url': endpoint_url}}
-    return smart_open.open(*args, transport_params=tparams, **kwargs)
+        try:
+            transport_params = kwargs['transport_params']
+        except KeyError:
+            transport_params = kwargs['transport_params'] = {}
+
+        try:
+            resource_kwargs = transport_params['resource_kwargs']
+        except KeyError:
+            resource_kwargs = transport_params['resource_kwargs'] = {}
+
+        resource_kwargs['endpoint_url'] = endpoint_url
+
+    return smart_open.open(*args, **kwargs)

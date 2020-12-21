@@ -127,6 +127,7 @@ def join_partition_num(
     output_format: str = datawelder.readwrite.JSON,
     fmtparams: Optional[Dict[str, str]] = None,
     fields: Optional[List[Field]] = None,
+    sotparams: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Join the ``partition_num`` th partition across all the dataframes.
 
@@ -153,8 +154,13 @@ def join_partition_num(
         assert output_path
         output_path.close = lambda: None
 
+    #
+    # When working with S3, we should create a single S3 client and re-use it
+    # for all the partitions to avoid MemoryError.
+    #
+
     frames = [
-        datawelder.partition.PartitionedFrame(fp)
+        datawelder.partition.PartitionedFrame(fp, sotparams=sotparams)
         if isinstance(fp, str) else fp
         for fp in frame_paths
     ]

@@ -31,6 +31,7 @@ import sys
 from typing import (
     Any,
     Callable,
+    Dict,
     IO,
     Iterator,
     List,
@@ -149,11 +150,12 @@ def calculate_key(key: str, num_partitions: int) -> int:
 
 
 class PartitionedFrame:
-    def __init__(self, path: str) -> None:
+    def __init__(self, path: str, sotparams: Optional[Dict[str, Any]]) -> None:
         self.path = path
+        self.sotparams = sotparams
 
         yaml_path = P.join(path, 'datawelder.yaml')
-        with datawelder.readwrite.open(yaml_path) as fin:
+        with datawelder.readwrite.open(yaml_path, transport_params=sotparams) as fin:
             self.config = yaml.safe_load(fin)
 
         assert self.config['config_format'] == 1
@@ -183,7 +185,7 @@ class PartitionedFrame:
         keyindex = names.index(self.key_name)
 
         partition_path = P.join(self.path, self.config['partition_format'] % partition_number)
-        return Partition(partition_path, names, keyindex)
+        return Partition(partition_path, names, keyindex, sotparams=self.sotparams)
 
     @property
     def field_names(self) -> List[str]:
@@ -210,6 +212,7 @@ class Partition:
         path: str,
         field_names: List[str],
         key_index: int,
+        sotparams: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Initialize a new partition.
 
@@ -223,6 +226,7 @@ class Partition:
         self.path = path
         self.field_names = field_names
         self.key_index = key_index
+        self.sotparams = sotparams
 
         self._num_fields = len(self.field_names)
         self._fin = None
@@ -235,7 +239,7 @@ class Partition:
         # FIXME: maybe optimize this later
         #
         if self._fin is None:
-            self._fin = datawelder.readwrite.open(self.path, 'rb')
+            self._fin = datawelder.readwrite.open(self.path, 'rb', transport_params=self.sotparams)
 
         while True:
             try:
