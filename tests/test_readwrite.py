@@ -2,8 +2,7 @@ import csv
 import io
 import tempfile
 
-from parameterizedtestcase import ParameterizedTestCase as PTestCase
-
+import pytest
 import datawelder.readwrite
 
 
@@ -115,15 +114,14 @@ def test_dump_and_load():
     assert actual_record == record
 
 
-class TestCsvParams(PTestCase):
-    @PTestCase.parameterize(
-        ('fmtparams', 'expected'),
-        [
-            ({'doublequote': True}, {'doublequote': True}),
-            ({'doublequote': 'true'}, {'doublequote': True}),
-            ({'doublequote': 'false'}, {'doublequote': False}),
-            ({'delimiter': '|'}, {'delimiter': '|'}),
-        ]
-    )
-    def test(self, fmtparams, expected):
-        assert datawelder.readwrite.csv_fmtparams(fmtparams) == expected
+@pytest.mark.parametrize(
+    ('fmtparams', 'expected'),
+    [
+        ({'doublequote': True}, {'doublequote': True}),
+        ({'doublequote': 'true'}, {'doublequote': True}),
+        ({'doublequote': 'false'}, {'doublequote': False}),
+        ({'delimiter': '|'}, {'delimiter': '|'}),
+    ]
+)
+def test_csv_params(fmtparams, expected):
+    assert datawelder.readwrite.csv_fmtparams(fmtparams) == expected
