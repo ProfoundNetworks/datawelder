@@ -47,6 +47,6 @@ setuptools.setup(
         'Topic :: System :: Distributed Computing',
     ],
     extras_require={
-        'test': ['boto3', 'moto[s3]', 'pytest', 'pytest-cov'],
+        'test': ['boto3', 'moto[s3]', 'parameterizedtestcase', 'pytest', 'pytest-cov'],
     }
 )
