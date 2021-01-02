@@ -474,6 +474,25 @@ def open_writer(
     )
 
 
+def _inject_endpoint_url(endpoint_url, kwargs):
+    #
+    # transport_params may be set to None or absent altogether
+    #
+    try:
+        transport_params = kwargs['transport_params']
+        transport_params.keys()
+    except (AttributeError, KeyError, TypeError):
+        transport_params = kwargs['transport_params'] = {}
+
+    try:
+        resource_kwargs = transport_params['resource_kwargs']
+        resource_kwargs.keys()
+    except (AttributeError, KeyError, TypeError):
+        resource_kwargs = transport_params['resource_kwargs'] = {}
+
+    resource_kwargs['endpoint_url'] = endpoint_url
+
+
 def open(*args, **kwargs):
     """Wraps smart open and injects the endpoint_url for work under localstack."""
     try:
@@ -481,21 +500,6 @@ def open(*args, **kwargs):
     except KeyError:
         pass
     else:
-        #
-        # transport_params may be set to None or absent altogether
-        #
-        try:
-            transport_params = kwargs['transport_params']
-            transport_params.keys()
-        except (KeyError, TypeError):
-            transport_params = kwargs['transport_params'] = {}
-
-        try:
-            resource_kwargs = transport_params['resource_kwargs']
-            resource_kwargs.keys()
-        except (KeyError, TypeError):
-            resource_kwargs = transport_params['resource_kwargs'] = {}
-
-        resource_kwargs['endpoint_url'] = endpoint_url
+        _inject_endpoint_url(endpoint_url, kwargs)
 
     return smart_open.open(*args, **kwargs)
