@@ -279,14 +279,16 @@ def csv_fmtparams(fmtparams: Dict[str, str]) -> Dict[str, Any]:
         'skipinitialspace': bool,
         'strict': bool,
     }
-    scrubbed = {}
+    scrubbed: Dict[str, Any] = {}
     for key, value in fmtparams.items():
         try:
             t = types[key]
         except KeyError:
             _LOGGER.error('ignoring unknown fmtparams key: %r', key)
         else:
-            if t == bool:
+            if t == bool and value in (True, False):
+                scrubbed[key] = value
+            elif t == bool:
                 scrubbed[key] = value.lower() == 'true'
             else:
                 scrubbed[key] = t(value)
@@ -479,14 +481,19 @@ def open(*args, **kwargs):
     except KeyError:
         pass
     else:
+        #
+        # transport_params may be set to None or absent altogether
+        #
         try:
             transport_params = kwargs['transport_params']
-        except KeyError:
+            transport_params.keys()
+        except (KeyError, TypeError):
             transport_params = kwargs['transport_params'] = {}
 
         try:
             resource_kwargs = transport_params['resource_kwargs']
-        except KeyError:
+            resource_kwargs.keys()
+        except (KeyError, TypeError):
             resource_kwargs = transport_params['resource_kwargs'] = {}
 
         resource_kwargs['endpoint_url'] = endpoint_url
