@@ -119,7 +119,7 @@ but this does not affect the integrity of the data.
 .. code:: bash
 
     $ python -m datawelder.join out.csv partitions/names partitions/currencies --format csv --select '0.name as name, 1.currency as curr' --subs 4
-    
+
 How does it work?
 -----------------
 
@@ -130,7 +130,7 @@ In this case, it automatically identified the format of the file as CSV.
 You can give it a helping hand by specifying the format and relevant parameters (e.g. field separator, quoting, etc) manually.
 
 We did not specify a partition key to use in the above example, so ``datawelder`` picked a default for us (you can override this).
-In the above example, we split each dataset into 10 partititions using the default key (whatever is the first column), but you can override that.
+In the above example, we split each dataset into 5 partititions using the default key (whatever is the first column), but you can override that.
 
 Features
 --------
