@@ -5,7 +5,7 @@ then
     exit 1
 fi
 
-set -euxo pipefail
+set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 version="$1"
 
