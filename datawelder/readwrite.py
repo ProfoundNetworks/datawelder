@@ -484,6 +484,14 @@ def _inject_endpoint_url(endpoint_url, kwargs):
     except (AttributeError, KeyError, TypeError):
         transport_params = kwargs['transport_params'] = {}
 
+    if transport_params.get('resource'):
+        #
+        # Don't bother injecting the endpoint_url.  We already have a resource
+        # object, and smart_open will ignore endpoint_url in favor of the
+        # resource.
+        #
+        return
+
     try:
         resource_kwargs = transport_params['resource_kwargs']
         resource_kwargs.keys()

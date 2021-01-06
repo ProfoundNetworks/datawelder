@@ -1,6 +1,8 @@
 import os
+import tempfile
 
 import boto3
+import mock
 import moto
 import pytest
 
@@ -67,3 +69,15 @@ def test_open_partitions_localstack():
     assert s3.Object('mybucket', '0').get()['Body'].read() == b'0\n'
     assert s3.Object('mybucket', '1').get()['Body'].read() == b'1\n'
     assert s3.Object('mybucket', '2').get()['Body'].read() == b'2\n'
+
+
+def test_partition():
+    curr_dir = os.path.dirname(__file__)
+    data_path = os.path.join(curr_dir, '../sampledata/names.csv')
+    callback = mock.Mock()
+    with datawelder.readwrite.open_reader(data_path, 'iso3') as reader:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            datawelder.partition.partition(reader, tmpdir, 5, callback=callback, modulo=50)
+
+    assert callback.call_count == 5
+    assert callback.call_args_list == [mock.call(x) for x in (50, 100, 150, 200, 250)]

@@ -365,6 +365,8 @@ def partition(
     num_partitions: int,
     field_names: Optional[List[str]] = None,
     key_function: Callable[[str, int], int] = calculate_key,
+    callback: Optional[Callable[[int], None]] = None,
+    modulo: int = 1000000,
 ) -> 'PartitionedFrame':
     """Partition a data frame."""
 
@@ -383,6 +385,9 @@ def partition(
         for i, record in enumerate(reader, 1):
             if i % 1000000 == 0:
                 _LOGGER.info('processed record #%d', i)
+
+            if callback and i % modulo == 0:
+                callback(i)
 
             try:
                 key = record[reader.key_index]
