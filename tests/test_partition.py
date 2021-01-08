@@ -46,10 +46,10 @@ def test_memory_partition_iteration():
 def test_open_partitions():
     s3 = boto3.resource('s3', region_name='us-east-1')
     s3.Bucket('testbucket').create()
-    with datawelder.partition.open_partitions('s3://testbucket/%d', 3, 'wt') as parts:
-        print(0, file=parts[0])
-        print(1, file=parts[1])
-        print(2, file=parts[2])
+    with datawelder.partition.open_partitions('s3://testbucket/%d', 3, 'wb') as parts:
+        parts[0].write(b'0\n')
+        parts[1].write(b'1\n')
+        parts[2].write(b'2\n')
 
     assert s3.Object('testbucket', '0').get()['Body'].read() == b'0\n'
     assert s3.Object('testbucket', '1').get()['Body'].read() == b'1\n'

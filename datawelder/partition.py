@@ -83,7 +83,7 @@ def _open(path: str, mode: str) -> IO[bytes]:
         #
         uri = smart_open.parse_uri(path)
 
-        config = botocore.Config(retries={'mode': 'standard', 'max_attempts': 10})
+        config = botocore.config.Config(retries={'mode': 'standard', 'max_attempts': 10})
         resource_kwargs = {'config': config}
         try:
             endpoint_url = os.environ['AWS_ENDPOINT_URL']
