@@ -140,8 +140,8 @@ def test_csv_params(fmtparams, expected):
         ({'transport_params': {'resource_kwargs': {'foo': 'bar'}}}, ),
     ]
 )
-def test_inject_endpoint_url(kwargs):
-    datawelder.readwrite._inject_endpoint_url('http://localhost:1234', kwargs)
+def test_inject_parameters(kwargs):
+    datawelder.readwrite._inject_parameters('http://localhost:1234', kwargs)
     assert kwargs['transport_params']['resource_kwargs']['endpoint_url'] == 'http://localhost:1234'
 
 
@@ -150,9 +150,10 @@ def test_open_endpoint_url(mock_open):
     try:
         os.environ['AWS_ENDPOINT_URL'] = 'http://localhost:1234'
         datawelder.readwrite.open('s3://mybucket/key')
-        mock_open.assert_called_with(
-            's3://mybucket/key',
-            transport_params={'resource_kwargs': {'endpoint_url': 'http://localhost:1234'}},
-        )
+        args, kwargs = mock_open.call_args_list[0]
+        resource_kwargs = kwargs['transport_params']['resource_kwargs']
+
+        assert args == ('s3://mybucket/key', )
+        assert resource_kwargs['endpoint_url'] == 'http://localhost:1234'
     finally:
         del os.environ['AWS_ENDPOINT_URL']

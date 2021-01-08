@@ -70,6 +70,7 @@ def _update_soft_limit(soft_limit: int, limit_type: int = resource.RLIMIT_NOFILE
 
 def _open(path: str, mode: str) -> IO[bytes]:
     if mode == 'wb' and path.startswith('s3://'):
+        import botocore.config  # type: ignore
         #
         # We can't do "import datawelder.s3" here because it causes an
         # UnboundLocalError when we try to touch datawelder.readwrite at the
@@ -82,7 +83,8 @@ def _open(path: str, mode: str) -> IO[bytes]:
         #
         uri = smart_open.parse_uri(path)
 
-        resource_kwargs = {}
+        config = botocore.Config(retries={'mode': 'standard', 'max_attempts': 10})
+        resource_kwargs = {'config': config}
         try:
             endpoint_url = os.environ['AWS_ENDPOINT_URL']
         except KeyError:

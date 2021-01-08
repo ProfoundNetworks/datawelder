@@ -6,7 +6,9 @@ import os
 import pickle
 import sys
 
+import botocore.config  # type: ignore
 import smart_open  # type: ignore
+
 import datawelder.readwrite
 
 from typing import (
@@ -474,7 +476,7 @@ def open_writer(
     )
 
 
-def _inject_endpoint_url(endpoint_url, kwargs):
+def _inject_parameters(endpoint_url, kwargs):
     #
     # transport_params may be set to None or absent altogether
     #
@@ -499,6 +501,9 @@ def _inject_endpoint_url(endpoint_url, kwargs):
         resource_kwargs = transport_params['resource_kwargs'] = {}
 
     resource_kwargs['endpoint_url'] = endpoint_url
+    resource_kwargs['config'] = botocore.config.Config(
+        retries={'mode': 'standard', 'max_attempts': 10},
+    )
 
 
 def open(*args, **kwargs):
@@ -508,6 +513,6 @@ def open(*args, **kwargs):
     except KeyError:
         pass
     else:
-        _inject_endpoint_url(endpoint_url, kwargs)
+        _inject_parameters(endpoint_url, kwargs)
 
     return smart_open.open(*args, **kwargs)
