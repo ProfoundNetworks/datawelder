@@ -369,6 +369,7 @@ def partition(
     key_function: Callable[[str, int], int] = calculate_key,
     callback: Optional[Callable[[int], None]] = None,
     modulo: int = 1000000,
+    sort_partitions: bool = True,
 ) -> 'PartitionedFrame':
     """Partition a data frame."""
 
@@ -423,12 +424,14 @@ def partition(
         yaml.dump(config, fout)
 
     #
-    # N.B. Parallelize the sorting?  Need to be careful of EOM because the
-    # sort loads each partition into memory in its entirety.
+    # The partitions MUST be sorted in order for joins to work.
+    # The sorting is optional here only so that it is possible to do it
+    # better elsewhere, e.g. using a Lambda function.
     #
-    frame = PartitionedFrame(destination_path)
-    for part in frame:
-        sort_partition(part.path, part.key_index)
+    if sort_partitions:
+        frame = PartitionedFrame(destination_path)
+        for part in frame:
+            sort_partition(part.path, part.key_index)
 
     return frame
 
