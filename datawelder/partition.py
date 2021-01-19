@@ -416,6 +416,7 @@ def partition(
         'source_path': str(reader.path),  # FIXME:
         'num_partitions': num_partitions,
         'partition_format': partition_format,
+        'num_records': wrote,
         'config_format': 1,
     }
 
@@ -423,13 +424,14 @@ def partition(
     with datawelder.readwrite.open(yaml_path, 'w') as fout:
         yaml.dump(config, fout)
 
+    frame = PartitionedFrame(destination_path)
+
     #
     # The partitions MUST be sorted in order for joins to work.
     # The sorting is optional here only so that it is possible to do it
     # better elsewhere, e.g. using a Lambda function.
     #
     if sort_partitions:
-        frame = PartitionedFrame(destination_path)
         for part in frame:
             sort_partition(part.path, part.key_index)
 

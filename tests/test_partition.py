@@ -1,3 +1,4 @@
+import json
 import os
 import tempfile
 
@@ -79,5 +80,23 @@ def test_partition():
         with tempfile.TemporaryDirectory() as tmpdir:
             datawelder.partition.partition(reader, tmpdir, 5, callback=callback, modulo=50)
 
+            frame = datawelder.partition.PartitionedFrame(tmpdir)
+            partition = frame[0]
+            records = list(partition)
+            assert records == sorted(records)
+
     assert callback.call_count == 5
     assert callback.call_args_list == [mock.call(x) for x in (50, 100, 150, 200, 250)]
+
+
+def test_partition_without_sort():
+    curr_dir = os.path.dirname(__file__)
+    data_path = os.path.join(curr_dir, '../sampledata/names.csv')
+    with datawelder.readwrite.open_reader(data_path, 'iso3') as reader:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            datawelder.partition.partition(reader, tmpdir, 5, sort_partitions=False)
+
+            frame = datawelder.partition.PartitionedFrame(tmpdir)
+            partition = frame[0]
+            records = list(partition)
+            assert records != sorted(records)
