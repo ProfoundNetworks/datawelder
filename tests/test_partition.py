@@ -6,6 +6,7 @@ import boto3
 import mock
 import moto
 import pytest
+import smart_open
 
 import datawelder.partition
 
@@ -100,3 +101,39 @@ def test_partition_without_sort():
             partition = frame[0]
             records = list(partition)
             assert records != sorted(records)
+
+
+def test_sort_partition_overwrite():
+    curr_dir = os.path.dirname(__file__)
+    data_path = os.path.join(curr_dir, '../sampledata/names.csv')
+    with datawelder.readwrite.open_reader(data_path, 'iso3') as reader:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            datawelder.partition.partition(reader, tmpdir, 5, sort_partitions=False)
+            frame = datawelder.partition.PartitionedFrame(tmpdir)
+            datawelder.partition.sort_partition(frame[0].path, key_index=frame.key_index)
+
+            frame = datawelder.partition.PartitionedFrame(tmpdir)
+            partition = frame[0]
+            records = list(partition)
+            assert records == sorted(records)
+
+
+def test_sort_partition_no_overwrite():
+    curr_dir = os.path.dirname(__file__)
+    data_path = os.path.join(curr_dir, '../sampledata/names.csv')
+    with datawelder.readwrite.open_reader(data_path, 'iso3') as reader:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            datawelder.partition.partition(reader, tmpdir, 5, sort_partitions=False)
+            frame = datawelder.partition.PartitionedFrame(tmpdir)
+            sorted_path = frame[0].path.replace('0000.json.gz', '0000.sorted.json.gz')
+
+            datawelder.partition.sort_partition(
+                frame[0].path,
+                key_index=frame.key_index,
+                output_path=sorted_path,
+            )
+
+            with smart_open.open(sorted_path) as fin:
+                records = [json.loads(line) for line in fin]
+
+            assert records == sorted(records)

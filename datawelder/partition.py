@@ -333,19 +333,20 @@ class MemoryPartition(Partition):
         return next(self._iter)
 
 
-def sort_partition(path: str, key_index: int) -> None:
+def sort_partition(path: str, key_index: int, output_path: Optional[str] = None) -> None:
     """Sorts the records in this partition by the value of the partition key.
 
     Loads the entire partition into memory to perform the sort.
-    Modifies the partition's data on disk.
+    Modifies the partition's data on disk in-place.
+    You can write to a different location by specifying `output_path`.
 
     Sorting partitions simplifies joining, as long as all the partitions are
     sorted in the same way.
     """
-    #
-    # TODO: more memory-efficient sorting?  Is it worth it?  The partitions
-    # are already quite small (by design).
-    #
+    if output_path is None:
+        output_path = path
+    assert output_path
+
     def g():
         with datawelder.readwrite.open(path, 'rb') as fin:
             while True:
@@ -356,7 +357,7 @@ def sort_partition(path: str, key_index: int) -> None:
 
     records = sorted(g(), key=lambda r: r[key_index])
 
-    with datawelder.readwrite.open(path, 'wb') as fout:
+    with datawelder.readwrite.open(output_path, 'wb') as fout:
         for r in records:
             datawelder.readwrite.dump(r, fout)
 
