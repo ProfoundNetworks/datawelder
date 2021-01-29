@@ -21,6 +21,7 @@ Each record will be a tuple.  You can convert it to a more helpful format::
 import collections
 import contextlib
 import gzip
+import json
 import hashlib
 import logging
 import os
@@ -349,17 +350,14 @@ def sort_partition(path: str, key_index: int, output_path: Optional[str] = None)
 
     def g():
         with datawelder.readwrite.open(path, 'rb') as fin:
-            while True:
-                try:
-                    yield datawelder.readwrite.load(fin)
-                except EOFError:
-                    break
+            for binline in fin:
+                yield binline
 
-    records = sorted(g(), key=lambda r: r[key_index])
+    records = sorted(g(), key=lambda binline: json.loads(binline)[key_index])
 
     with datawelder.readwrite.open(output_path, 'wb') as fout:
         for r in records:
-            datawelder.readwrite.dump(r, fout)
+            fout.write(r)
 
 
 def partition(
