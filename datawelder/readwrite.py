@@ -370,16 +370,18 @@ class DenseJsonWriter(AbstractWriter):
         self._fout.write(b'\n')
 
 
+def identity(value: Any) -> Any:
+    return value
+
+
 class CsvWriter(AbstractWriter):
     """Writes record as CSV."""
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, scrubbers=None, **kwargs):
         super().__init__(*args, **kwargs)
         self._write_header = self._fmtparams.pop('write_header', 'true').lower() == 'true'
-
-        quoting = self._fmtparams.get('quoting')
-        quotechar = self._fmtparams.get('quotechar')
-        escapechar = self._fmtparams.get('escapechar')
-        self._scrub_delimiter = quoting == csv.QUOTE_NONE and (not quotechar) and (not escapechar)
+        self._scrubbers = {i: identity for i, _ in enumerate(self._field_names)}
+        if scrubbers:
+            self._scrubbers.update(scrubbers)
 
     def __enter__(self):
         fmtparams = csv_fmtparams(self._fmtparams)
@@ -393,22 +395,7 @@ class CsvWriter(AbstractWriter):
 
     def write(self, record):
         row = [record[i] for i in self._field_indices]
-
-        if self._scrub_delimiter:
-            #
-            # If we don't scrub, then we'll trip over this:
-            # _csv.Error: need to escape, but no escapechar set
-            # when calling writerow.
-            #
-            # This is mostly a hack to deal with our preferred form of
-            # CSV: pipe-delimited, no quoting, no escapes.  If cell values
-            # contain pipes, get rid of them first.
-            #
-            delimiter = self._fmtparams.get('delimiter', ',')
-            for i, column in enumerate(row):
-                if isinstance(column, str):
-                    row[i] = column.replace(delimiter, ' ')
-
+        row = [self._scrubbers[i](value) for i, value in enumerate(row)]
         self._writer.writerow(row)
 
 
