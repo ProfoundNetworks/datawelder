@@ -17,6 +17,7 @@ import sys
 
 from typing import (
     Any,
+    Callable,
     Dict,
     Iterator,
     List,
@@ -128,6 +129,7 @@ def join_partition_num(
     fmtparams: Optional[Dict[str, str]] = None,
     fields: Optional[List[Field]] = None,
     sotparams: Optional[Dict[str, Any]] = None,
+    scrubbers: Optional[Dict[int, Callable]] = None,
 ) -> None:
     """Join the ``partition_num`` th partition across all the dataframes.
 
@@ -180,6 +182,7 @@ def join_partition_num(
         field_indices=field_indices,
         field_names=field_names,
         fmtparams=fmtparams,
+        scrubbers=scrubbers,
     ) as writer:
         for record in _join_partitions(partitions):
             writer.write(record)

@@ -332,7 +332,7 @@ class AbstractWriter:
     def __exit__(self, *exc):
         self._fout.close()
 
-    def write(self, record: List[Any]) -> None:
+    def write(self, record: Union[List, Tuple]) -> None:
         raise NotImplementedError
 
 
@@ -442,24 +442,27 @@ def open_writer(
     field_indices: List[int],
     field_names: List[str],
     fmtparams: Optional[Dict[str, str]] = None,
-):
-
+    scrubbers: Optional[Dict[int, Callable]] = None,
+) -> 'AbstractWriter':
     cls: Type[AbstractWriter] = PickleWriter
+    kwargs = {}
     if fmt == PICKLE:
         cls = PickleWriter
     elif fmt == JSON:
         cls = JsonWriter
     elif fmt == CSV:
         cls = CsvWriter
+        kwargs['scrubbers'] = scrubbers
     else:
         assert False, 'unknown format: %r' % fmt
 
-    return cls(
+    return cls(  # type: ignore
         path,
         partition_num,
         field_indices=field_indices,
         field_names=field_names,
         fmtparams=fmtparams,
+        **kwargs,
     )
 
 
