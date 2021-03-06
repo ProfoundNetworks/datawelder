@@ -36,7 +36,7 @@ class LightweightWriter(io.BufferedIOBase):
         bucket: str,
         key: str,
         min_part_size: int = DEFAULT_MIN_PART_SIZE,
-        resource_kwargs: Optional[dict] = None,
+        client: Optional['boto3.client'] = None,
     ):
         assert min_part_size >= MIN_MIN_PART_SIZE
 
@@ -51,10 +51,10 @@ class LightweightWriter(io.BufferedIOBase):
         self._etags: List[str] = []
         self._closed: bool = False
         self._total_bytes: int = 0
+        self._client = client
 
-        if resource_kwargs is None:
-            resource_kwargs = {}
-        self._resource_kwargs = resource_kwargs
+        if self._client is None:
+            self._client = boto3.client('s3')
 
         #
         # This member is part of the io.BufferedIOBase interface.
@@ -78,8 +78,6 @@ class LightweightWriter(io.BufferedIOBase):
         assert self._total_bytes > 0
         assert self._mpid is not None
 
-        s3 = boto3.resource('s3', **self._resource_kwargs)
-        multipart_upload = s3.MultipartUpload(self._bucket, self._key, self._mpid)
         partinfo = {
             'Parts': [
                 {'PartNumber': partnum, 'ETag': etag}
@@ -87,17 +85,18 @@ class LightweightWriter(io.BufferedIOBase):
             ]
         }
         _LOGGER.debug('partinfo: %r', partinfo)
-
         #
         # TODO: check that this thing succeeded
         #
-        multipart_upload.complete(MultipartUpload=partinfo)
-
+        self._client.complete_multipart_upload(
+            Bucket=self._bucket,
+            Key=self._key,
+            MultipartUpload=partinfo,
+            UploadId=self._mpid,
+        )
         self._mpid = None
         self._etags = []
 
-        del s3
-        del multipart_upload
         del partinfo
         gc.collect()
 
@@ -144,16 +143,11 @@ class LightweightWriter(io.BufferedIOBase):
     # Internal methods.
     #
     def _upload_next_part(self):
-        s3 = boto3.resource('s3', **self._resource_kwargs)
-        if self._mpid:
-            multipart_upload = s3.MultipartUpload(self._bucket, self._key, self._mpid)
-            _LOGGER.debug('resuming multipart upload %r', multipart_upload.id)
-        else:
-            object_ = s3.Object(self._bucket, self._key)
-            multipart_upload = object_.initiate_multipart_upload()
-            _LOGGER.debug('initiated multipart upload %r', multipart_upload.id)
-            self._mpid = multipart_upload.id
-            del object_
+        if self._mpid is None:
+            self._mpid = self._client.create_multipart_upload(
+                Bucket=self._bucket,
+                Key=self._key,
+            )['UploadId']
 
         part_num = len(self._etags) + 1
         _LOGGER.debug(
@@ -165,7 +159,15 @@ class LightweightWriter(io.BufferedIOBase):
             self._total_bytes / 1024.0 ** 3,
         )
         self._buf.seek(0)
-        part = multipart_upload.Part(part_num)
+
+        upload_part = functools.partial(
+            self._client.upload_part,
+            Bucket=self._bucket,
+            Key=self._key,
+            UploadId=self._mpid,
+            PartNumber=part_num,
+            Body=self._buf,
+        )
 
         #
         # Network problems in the middle of an upload are particularly
@@ -174,20 +176,15 @@ class LightweightWriter(io.BufferedIOBase):
         # especially robust.
         #
         message = 'upload bucket %r key %r part %r' % (self._bucket, self._key, part_num)
-        uploaded_part = _retry_if_failed(
-            functools.partial(part.upload, Body=self._buf),
-            message=message,
-        )
-        _LOGGER.debug('%s finished, ETag: %r', message, uploaded_part['ETag'])
+        response = _retry_if_failed(upload_part, message=message)
+        _LOGGER.debug('%s finished, ETag: %r', message, response['ETag'])
 
-        self._etags.append(uploaded_part['ETag'])
+        self._etags.append(response['ETag'])
         self._buf.seek(0)
         self._buf.truncate(0)
 
-        del s3
-        del multipart_upload
-        del part
-        del uploaded_part
+        del upload_part
+        del response
         gc.collect()
 
     def __enter__(self):

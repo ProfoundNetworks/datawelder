@@ -27,16 +27,15 @@ def test_writer():
 )
 def test_writer_localstack():
     """Does the writer work with a localstack S3 bucket?"""
+    session = boto3.Session(region_name='us-east-1')
+
     endpoint_url = os.environ['LOCALSTACK_ENDPOINT']
-    resource = boto3.resource('s3', region_name='us-east-1', endpoint_url=endpoint_url)
+    resource = session.resource('s3', endpoint_url=endpoint_url)
     bucket = resource.create_bucket(Bucket='mybucket')
     bucket.wait_until_exists()
 
-    with datawelder.s3.LightweightWriter(
-        'mybucket',
-        'mykey',
-        resource_kwargs={'endpoint_url': endpoint_url},
-    ) as fout:
+    client = session.client('s3', endpoint_url=endpoint_url)
+    with datawelder.s3.LightweightWriter('mybucket', 'mykey', client=client) as fout:
         fout.write(b'hello world!')
 
     obj = resource.Object('mybucket', 'mykey')
