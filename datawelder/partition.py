@@ -41,7 +41,6 @@ from typing import (
 )
 
 import smart_open  # type: ignore
-import yaml
 
 import datawelder.readwrite
 
@@ -157,9 +156,19 @@ class PartitionedFrame:
         self.path = path
         self.sotparams = sotparams
 
-        yaml_path = P.join(path, 'datawelder.yaml')
-        with datawelder.readwrite.open(yaml_path, transport_params=sotparams) as fin:
-            self.config = yaml.safe_load(fin)
+        try:
+            config_path = P.join(path, 'datawelder.json')
+            with datawelder.readwrite.open(config_path, transport_params=sotparams) as fin:
+                self.config = json.load(fin)
+        except IOError:
+            #
+            # Older versions of DataWelder used YAML to store the partition info.
+            # This turned out to be a bad idea (as often happens with YAML).
+            #
+            import yaml
+            config_path = P.join(path, 'datawelder.yaml')
+            with datawelder.readwrite.open(config_path, transport_params=sotparams) as fin:
+                self.config = yaml.safe_load(fin)
 
         assert self.config['config_format'] == 1
 
@@ -207,6 +216,10 @@ class PartitionedFrame:
     def key_name(self) -> str:
         """Returns the name of the partition key."""
         return self.field_names[self.key_index]
+
+    def save(self):
+        with datawelder.readwrite.open(os.path.join(self.path, 'datawelder.json'), 'w') as fout:
+            json.dump(self.config, fout, sort_keys=True, indent=2)
 
 
 class Partition:
@@ -419,9 +432,9 @@ def partition(
         'config_format': 1,
     }
 
-    yaml_path = P.join(destination_path, 'datawelder.yaml')
-    with datawelder.readwrite.open(yaml_path, 'w') as fout:
-        yaml.dump(config, fout)
+    config_path = P.join(destination_path, 'datawelder.json')
+    with datawelder.readwrite.open(config_path, 'w') as fout:
+        json.dump(config, fout)
 
     frame = PartitionedFrame(destination_path)
 

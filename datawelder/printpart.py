@@ -3,8 +3,6 @@ import json
 import os
 import pickle
 
-import yaml
-
 import datawelder.readwrite
 
 
@@ -15,9 +13,9 @@ def main():
     args = parser.parse_args()
 
     if args.format != 'pickle':
-        yaml_path = os.path.join(os.path.dirname(args.path), 'datawelder.yaml')
-        with datawelder.readwrite.open(yaml_path) as fin:
-            config = yaml.safe_load(fin)
+        config_path = os.path.join(os.path.dirname(args.path), 'datawelder.json')
+        with datawelder.readwrite.open(config_path) as fin:
+            config = json.load(fin)
 
     with datawelder.readwrite.open(args.path, 'rb') as fin:
         while True:
