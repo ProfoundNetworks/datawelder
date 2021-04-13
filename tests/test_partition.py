@@ -2,11 +2,12 @@ import json
 import os
 import tempfile
 
-import boto3
-import mock
-import moto
+import unittest.mock as mock
+
+import boto3  # type: ignore
+import moto  # type: ignore
 import pytest
-import smart_open
+import smart_open  # type: ignore
 
 import datawelder.partition
 
@@ -58,7 +59,10 @@ def test_open_partitions():
     assert s3.Object('testbucket', '2').get()['Body'].read() == b'2\n'
 
 
-@pytest.mark.skipif(not os.environ.get('AWS_ENDPOINT_URL'), reason='this test expects a working localstack')
+@pytest.mark.skipif(
+    not os.environ.get('AWS_ENDPOINT_URL'),
+    reason='this test expects a working localstack',
+)
 def test_open_partitions_localstack():
     endpoint_url = os.environ.get('AWS_ENDPOINT_URL')
     s3 = boto3.resource('s3', region_name='us-east-1', endpoint_url=endpoint_url)
