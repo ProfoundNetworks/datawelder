@@ -2,9 +2,9 @@ import csv
 import io
 import os
 import tempfile
+import unittest.mock as mock
 
 import boto3  # type: ignore
-import mock
 import pytest
 
 import datawelder.readwrite
