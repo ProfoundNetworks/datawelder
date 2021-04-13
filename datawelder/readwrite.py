@@ -6,6 +6,7 @@ import os
 import pickle
 import sys
 
+import boto3  # type: ignore
 import botocore.config  # type: ignore
 import smart_open  # type: ignore
 
@@ -476,23 +477,18 @@ def _inject_parameters(endpoint_url, kwargs):
     except (AttributeError, KeyError, TypeError):
         transport_params = kwargs['transport_params'] = {}
 
-    if transport_params.get('resource'):
+    if transport_params.get('client'):
         #
-        # Don't bother injecting the endpoint_url.  We already have a resource
-        # object, and smart_open will ignore endpoint_url in favor of the
+        # Don't bother injecting the endpoint_url.  We already have a client
+        # object, so we can expect it to have to correct endpoint URL set.
         # resource.
         #
         return
 
-    try:
-        resource_kwargs = transport_params['resource_kwargs']
-        resource_kwargs.keys()
-    except (AttributeError, KeyError, TypeError):
-        resource_kwargs = transport_params['resource_kwargs'] = {}
-
-    resource_kwargs['endpoint_url'] = endpoint_url
-    resource_kwargs['config'] = botocore.config.Config(
-        retries={'mode': 'standard', 'max_attempts': 10},
+    transport_params['client'] = boto3.client(
+        's3',
+        endpoint_url=endpoint_url,
+        config=botocore.config.Config(retries={'mode': 'standard', 'max_attempts': 10}),
     )
 
 

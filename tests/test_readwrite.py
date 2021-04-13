@@ -3,8 +3,10 @@ import io
 import os
 import tempfile
 
+import boto3  # type: ignore
 import mock
 import pytest
+
 import datawelder.readwrite
 
 
@@ -120,19 +122,25 @@ def test_csv_params(fmtparams, expected):
 
 
 @pytest.mark.parametrize(
-    ('kwargs', ),
+    ('kwargs', 'expected'),
     [
-        ({}, ),
-        ({'transport_params': None}, ),
-        ({'transport_params': {}}, ),
-        ({'transport_params': {'resource_kwargs': None}}, ),
-        ({'transport_params': {'resource_kwargs': {}}}, ),
-        ({'transport_params': {'resource_kwargs': {'foo': 'bar'}}}, ),
+        ({}, 's3(http://localhost:1234)'),
+        ({'transport_params': None}, 's3(http://localhost:1234)'),
+        ({'transport_params': {}}, 's3(http://localhost:1234)'),
+        (
+            {
+                'transport_params': {
+                    'client': boto3.client('s3', endpoint_url='http://localhost:4567'),
+                }
+            },
+            's3(http://localhost:4567)'
+        ),
     ]
 )
-def test_inject_parameters(kwargs):
+def test_inject_parameters(kwargs, expected):
     datawelder.readwrite._inject_parameters('http://localhost:1234', kwargs)
-    assert kwargs['transport_params']['resource_kwargs']['endpoint_url'] == 'http://localhost:1234'
+    assert kwargs['transport_params']['client']
+    assert str(kwargs['transport_params']['client']._endpoint) == expected
 
 
 @mock.patch('smart_open.open')
@@ -141,9 +149,9 @@ def test_open_endpoint_url(mock_open):
         os.environ['AWS_ENDPOINT_URL'] = 'http://localhost:1234'
         datawelder.readwrite.open('s3://mybucket/key')
         args, kwargs = mock_open.call_args_list[0]
-        resource_kwargs = kwargs['transport_params']['resource_kwargs']
+        client = kwargs['transport_params']['client']
 
         assert args == ('s3://mybucket/key', )
-        assert resource_kwargs['endpoint_url'] == 'http://localhost:1234'
+        assert str(client._endpoint) == 's3(http://localhost:1234)'
     finally:
         del os.environ['AWS_ENDPOINT_URL']
